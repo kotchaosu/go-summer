@@ -3,74 +3,51 @@ package nlptk
 import "strings"
 
 type Texter interface {
-	// order of paragraph/sentence/word matters
-	GetNumber () int
-	// returns number of smaller parts inside
+	// returns slice of smaller parts inside
 	// for paragraphs -> sentences
 	// for sentence -> words
-	CountParts() int
-	GetText() string
+	GetParts() []string
 	// checks if text attribute contains string
 	IsIn(str string) bool 
 	CreateBigrams () [][2]string
 }
 
 type Paragraph struct {
-	number, numsentences int
-	text string
+	Number int
+	Text string
 }
 
-func (p *Paragraph) GetNumber () int {
-	return p.number
-}
-
-func (p *Paragraph) CountParts () int {
-	return p.numsentences
-}
-
-func (p *Paragraph) GetText () string {
-	return p.text
+func (p *Paragraph) GetParts () []string {
+	str := p.Text
+	return strings.Split(str, ".")
 }
 
 func (p *Paragraph) IsIn (str string) bool {
-	text := p.GetText()
-	for i := 0; i < len(text) - len(str); i++ {
-		if str == text[i:i+len(str)-1] {
-			return true
-		}
+	if strings.Count(p.Text, str) != 0 {
+		return true
 	}
 	return false
 }
 
 type Sentence struct {
-	number, numwords int
-	text string
+	Number int
+	Text string
 }
 
-func (s *Sentence) GetNumber () int {
-	return s.number
-}
-
-func (s *Sentence) CountParts () int {
-	return s.numwords
-}
-
-func (s *Sentence) GetText () string {
-	return s.text
+func (s *Sentence) GetParts () []string {
+	str := s.Text
+	return strings.Fields(str)
 }
 
 func (s *Sentence) IsIn (str string) bool {
-	text := s.GetText()
-	for i := 0; i < len(text) - len(str); i++ {
-		if str == text[i:i+len(str)-1] {
-			return true
-		}
+	if strings.Count(s.Text, str) != 0 {
+		return true
 	}
 	return false
 }
 
 func (s *Sentence) CreateBigrams () [][2]string {
-	str := s.GetText()
+	str := s.Text
 	unigrams := strings.Fields(str)
 	
 	if len(unigrams) == 0 {
@@ -119,4 +96,3 @@ func (d Dict) showProbability (str1, str2 string) float64 {
      }
      return float64(d[str1][str2])/float64(den)
 }
-	
