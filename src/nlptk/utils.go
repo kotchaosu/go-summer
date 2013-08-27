@@ -46,7 +46,7 @@ func (s *Sentence) IsIn (str string) bool {
 	return false
 }
 
-func (s *Sentence) CreateBigrams () [][2]string {
+func (s *Sentence) CreateBigrams () [][]string {
 	str := s.Text
 	unigrams := strings.Fields(str)
 	
@@ -58,17 +58,17 @@ func (s *Sentence) CreateBigrams () [][2]string {
 	    unigrams[i] = strings.Trim(v, "!?,.'()")
 	}
 
-	bigrams := make([][2]string, len(unigrams)+1, len(unigrams)+1)
+	bigrams := make([][]string, len(unigrams)+1, len(unigrams)+1)
 
 	for i, v := range unigrams {
 		switch i {
 		case 0:
-			bigrams[i] = [2]string{"", v}
+			bigrams[i] = []string{"", v}
 		default:
-			bigrams[i] = [2]string{unigrams[i-1], v}
+			bigrams[i] = []string{unigrams[i-1], v}
 		}
 	}
-	bigrams[len(unigrams)] = [2]string{unigrams[len(unigrams)-1], ""}
+	bigrams[len(unigrams)] = []string{unigrams[len(unigrams)-1], ""}
 
 	return bigrams
 }
