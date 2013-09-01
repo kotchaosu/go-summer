@@ -1,3 +1,5 @@
+// learning tools for HMM parameters
+
 // package extracts and counts all words from learning set;
 // output (map[string]int) is saved in Redis DB
 package main
@@ -7,15 +9,17 @@ import (
 	"fmt"
 	"os"
 	"nlptk"
+	"math"
 	"redis"
 )
 
 const (
-	SETDIR = "/home/maxabsent/Documents/learning_set/full_texts/"
+	FULL = "/home/maxabsent/Documents/learning_set/full_texts/"
+	SUMM = "/home/maxabsent/Documents/learning_set/summarizations/"
 )
 
+// extracts, trims from special signs and counts "bare" words in learning set
 func WordCount(file_path string) map[string]int {
-	// extracts, trims from special signs and counts "bare" words in learning set
 	file, err := os.Open(file_path)
 
 	if err != nil {
@@ -57,6 +61,56 @@ func Store(dictionary map[string]int) {
 	//		2. update the old one
 	// close connection
 	connection.disconnect()
+}
+
+// function querying Redis dictionary
+// return number of occurences of word in the training set
+func GetWordCount(word string) int {
+	//
+}
+
+// builds vectors of features for every sentence
+// feature vector:
+//	1. position within paragraph
+//	2. number of terms in sentence
+//	3. how likely the terms are given the baseline of terms
+//	4. how likely the terms are given the document terms
+func ComputeFeatures(sentence nlptk.Sentence, document_dict map[string]int) []float64 {
+	
+	all_words := float64(GetWordCount("TOTAL"))
+	all_doc_words := float64(document_dict["TOTAL"])	
+
+	words := sentence.GetParts()
+
+	number_of_sentence := float64(sentence.Number)
+	number_of_terms := float64(len(words))
+	baseline_likelihood := 0.0
+	document_likelihood := 0.0
+
+	for _, word := range words {
+		base_count := float64(GetWordCount(word))
+		doc_count := float64(document_dict[word])
+
+		baseline_likelihood += math.Log10(base_count/all_words)
+		document_likelihood += math.Log10(doc_count/all_doc_words)
+	}
+
+	features := [...]float64{
+		float64(number_of_sentence),
+		float64(number_of_terms),
+		baseline_likelihood,
+		document_likelihood
+	}
+	return features
+}
+
+// process full text and human-created summarization
+// to initialize Hidden Markov Model of 2s+1 states
+// (s - number of sentences in full text)
+// with probabilitiy of the sentence occurrence in the summary
+func InitHMM(filename string) [][]float64 {
+	// open two files
+	// find and write down number of sentence which appeared in the summary
 }
 
 func main() {
