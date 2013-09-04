@@ -104,11 +104,18 @@ func ComputeFeatures(sentence nlptk.Sentence, document_dict map[string]int) []fl
 	return features
 }
 
+struct HiddenMM type {
+	States []int
+	A [][]float64
+	B [][]float64
+	pi []float64
+}
+
 // process full text and human-created summarization
 // to initialize Hidden Markov Model of 2s+1 states
 // (s - number of sentences in full text)
 // with probabilitiy of the sentence occurrence in the summary
-func InitHMM(filename string) [][]float64 {
+func (* HiddenMM) InitHMM(filename string) [][]float64 {
 	// open two files
 	// find and write down number of sentence which appeared in the summary
 }
@@ -136,7 +143,7 @@ func CheckConvergence(old_likelihood float64, new_likelihood float64,
 }
 
 // calculate probability of generated sequence
-func Forward(observations []float64, *c []float64) [][]float64 {
+func (* HiddenMM) Forward(observations []float64, *c []float64) [][]float64 {
 	T := len(observations)
 	pi := make([]float64, N)
 	A := make([][]float64, N)
@@ -189,7 +196,7 @@ func Forward(observations []float64, *c []float64) [][]float64 {
 }
 
 // backward variables - use the same 'forward' scaling factor
-func Backward(observations []float64, c []float64) [][]float64 {
+func (* HiddenMM) Backward(observations []float64, c []float64) [][]float64 {
 	T := len(observations)
 	pi := make([]float64, N)
 	A := make([][]float64, N)
@@ -220,7 +227,7 @@ func Backward(observations []float64, c []float64) [][]float64 {
 }
 
 // main algorithm for learning HMM parameters from given observations
-func Learn(observations [][]float64, iterations int, tolerance float64) {
+func (* HiddenMM) Learn(observations [][]float64, iterations int, tolerance float64) {
 	if tolerance * iterations == 0 {
 		return
 	}
