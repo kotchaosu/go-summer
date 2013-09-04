@@ -113,6 +113,253 @@ func InitHMM(filename string) [][]float64 {
 	// find and write down number of sentence which appeared in the summary
 }
 
+// calculate probability of generated sequence
+func Forward(observations []float64, *c []float64) [][]float64 {
+	T := len(observations)
+	pi := make([]float64, N)
+	A := make([][]float64, N)
+
+	fwd := make([][]float64, T)
+
+	for i := range(fwd) {
+		fwd[i] = make([]float64, States)
+	}
+	c := make([]float64, T)
+
+	// STEP 1
+	// init
+	for i := 0; i < States; i++ {
+		fwd[0][i] = pi[i] * B[i][observations[0]]
+		c[0] += fwd[0][i]
+	}
+
+	// scaling
+	if c[0] > 0 {
+		for i := 0; i < States; i++ {
+			fwd[0][i] /= c[0]
+		}
+	}
+
+	// STEP 2
+	// induction
+	for t := 1; t < T; t++ {
+		for i := 0; i < States; i++ {
+			p := B[i][observations[t]]
+
+			sum := 0.0
+
+			for j := 0; j < States; j++ {
+				sum += fwd[t - 1][j] * A[j][i]
+			}
+			fwd[t][i] = sum * p
+
+			c[t] += fwd[t][i]
+		}
+
+		// scaling
+		if c[t] > 0 {
+			for i := 0; i < States; i++ {
+				fwd[t][i] /= c[t]
+			}
+		}
+	}
+	return fwd
+}
+
+// backward variables - use the same 'forward' scaling factor
+func Backward(observations []float64, c []float64) [][]float64 {
+	T := len(observations)
+	pi := make([]float64, N)
+	A := make([][]float64, N)
+
+	bwd := make([][]float64, T)
+
+	for i := range(bwd) {
+		bwd[i] = make([]float64, States)
+	}
+	// STEP 1
+	// init
+	for i := 0; i < States; i++ {
+		bwd[T - 1][i] = 1.0 / c[T - 1]
+	}
+
+	// STEP 2
+	// induction
+	for t := T - 2; t >= 0; t-- {
+		for i := 0; i < States; i++ {
+			sum := 0.0
+			for j := 0; j < States; j++ {
+				sum += A[i][j] * B[j][observations[t + 1]] * bwd[t + 1][j]
+			}
+			bwd[t][i] += sum / c[t]
+		}
+	}
+	return bwd
+}
+
+// main algorithm for learning HMM parameters from given observations
+func Learn(observations [][]float64, iterations int, tolerance float64) {
+	if tolerance * iterations == 0 {
+		return
+	}
+
+	N := len(observations)
+	iter := 0
+	stop := false
+
+	pi := make([]float64, N)  // probabilities
+	A := make([][]float64, N)  // transitions
+
+	// init
+	epsilon := make([][]float64, N)
+	gamma := make([][]float64, N)
+
+	for i := 0; i < N; i++ {
+		T := len(observations[i])
+		epsilon[i] = [...]float64{T, States, States}
+		gamma[i] = [...]float64{T, States}
+	}
+
+	// initial log-likelihood
+	old_likelihood := 0.00001
+	new_likelihood := 0.0
+
+	// maintain loop until reaching tolerance
+	// or number of iterations
+	for !stop {
+
+		// for each sequence of observations
+		for i := 0; i < N; i++ {
+			sequence := observations[i]
+			T := len(sequence)
+
+			scaling := make([]float64)
+
+			// I STEP
+			// calculate forward & backward probability
+			fwd := Forward(observations[i], &scaling)
+			bwd := Backward(observations[i], &scaling)
+
+			// II STEP
+			// transmission & emission pairs
+
+			// gamma
+			for t := 0; t < T; t++ {
+				s := 0.0
+
+				for k := 0; k < States; k++ {
+					gamma[i][t][k] = fwd[t][k] * bwd[t][k]
+					s += gamma[i][t][k]
+				}
+
+				// scaling
+				if s > 0 {
+					for k := 0; k < States; k++ {
+						gamma[i][t][k] /= s
+					}
+				}
+			}
+
+			// epsilon
+			for t := 0; t < T - 1; t++ {
+				s := 0.0
+
+				for k := 0; k < States; k++ {
+					for l := 0; l < States; l++ {
+						epsilon[i][t][k][l] = fwd[t][k] * A[k][l] * bwd[t + 1][l] * B[l][sequence[t + 1]]
+						s += epsilon[i][t][k][l]
+					}
+				}
+
+				if s > 0 {
+					for k := 0; k < States; k++ {
+						for l := 0; l < States; l++ {
+							epsilon[i][t][k][l] /= s
+						}
+					}
+				}
+			}
+
+			// log-likelihood for the sequence
+			for t := 0; t < len(scaling); t++ {
+				new_likelihood += math.Log(scaling[t])
+			}
+		}
+
+		// average likelihood
+		new_likelihood /= len(observations)
+
+		// check convergence
+		if CheckConvergence(old_likelihood, new_likelihood, iter, iterations, tolerance) {
+			stop = true
+		} else {
+			// STEP 3
+			// parameter re-estimation
+			iter++
+			old_likelihood = new_likelihood
+			new_likelihood = 0.0
+
+			// init probabilities
+			for k := 0; k < States; k++ {
+				sum := 0.0
+				for i := 0; i < N; i++ {
+					sum += gamma[i][0][k]
+				}
+				pi[k] = sum / N
+			}
+
+			// transition probabilities
+			for i := 0; i < States; i++ {
+				for j := 0; j < States; j++ {
+					den, num := 0.0, 0.0
+					for k := 0; k < N; k++ {
+						T := len(observations[k])
+
+						for l := 0; l < T - 1; l++ {
+							num += epsilon[k][l][i][j]
+						}
+						for l := 0; l < T - 1; l++ {
+							den += gamma[k][l][i]
+						}
+					}
+
+					if den == 0.0 {
+						A[i][j] = 0.0
+					} else {
+						A[i][j] = num / den
+					}
+				}
+			}
+
+			// emission probabilities
+			for i := 0; i < States; i++ {
+				for j := 0; j < States; j++ {
+					den, num := 0.0, 0.0
+					for k := 0; k < N; k++ {
+						T := len(observations[k])
+						for l := 0; l < T; l++ {
+							if observations[k][l] == j {
+								num += gamma[k][l][i]
+							}
+						}
+						for l := 0; l < T; l++ {
+							den += gamma[k][l][i]
+						}
+					}
+
+					if den == 0.0 {
+						B[i][j] = 0.0
+					} else {
+						B[i][j] = num / den
+					}
+				}
+			}
+		}
+	}
+	// return the model avg log-likelihood
+	return new_likelihood
+}
+
 func main() {
 	dir, err := os.Open(SETDIR)
 
