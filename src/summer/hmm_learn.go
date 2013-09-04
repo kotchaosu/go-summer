@@ -113,6 +113,28 @@ func InitHMM(filename string) [][]float64 {
 	// find and write down number of sentence which appeared in the summary
 }
 
+//
+func CheckConvergence(old_likelihood float64, new_likelihood float64,
+	current_iter int, max_iter int, tolerance float64) bool {
+	//
+	if tolerance > 0 {
+		if math.Abs(old_likelihood - new_likelihood) <= tolerance {
+			return true
+		}
+
+		if max_iter > 0 {
+			if current_iter >= max_iter {
+				return true
+			}
+		}
+	} else {
+		if current_iter == max_iter {
+			return true
+		}
+		return false
+	}
+}
+
 // calculate probability of generated sequence
 func Forward(observations []float64, *c []float64) [][]float64 {
 	T := len(observations)
