@@ -1,7 +1,4 @@
 // learning tools for HMM parameters
-
-// package extracts and counts all words from learning set;
-// output (map[string]int) is saved in Redis DB
 package main
 
 import (
@@ -10,12 +7,15 @@ import (
 	"os"
 	"nlptk"
 	"math"
-	"redis"
+	"redis/redis"
 )
 
 const (
 	FULL = "/home/maxabsent/Documents/learning_set/full_texts/"
 	SUMM = "/home/maxabsent/Documents/learning_set/summarizations/"
+	DBTRANSPREFIX = "#@#"
+	DBEMISPREFIX = "@#@"
+	DBDICTPREFIX = "#"
 )
 
 // extracts, trims from special signs and counts "bare" words in learning set
@@ -51,33 +51,49 @@ func WordCount(file_path string) map[string]int {
 	return word_counter
 }
 
-func Store(dictionary map[string]int) {
-	// connect to db
-	connection := redis.newConnHdl(redis.DefaultSpec())
-	connection.connect()
-	// for every element in input dictionary
-	// check if word exists in db
-	//		1. create new row
-	//		2. update the old one
-	// close connection
-	connection.disconnect()
+func Store(dictionary chan map[string]int) {
+	connection := pool.Get()
+
+	for d := range dictionary {
+		for k, v := range d {
+
+			k = DBDICTPREFIX + k
+
+			_, err := connection.Do("EXISTS", k)
+			if err != nil {
+				connection.Do("SET", k, v) // create new entry
+			} else {
+				connection.Do("INCRBY", k, v) // update existing
+			}
+		}
+	}
+	connection.Close()
 }
 
 // function querying Redis dictionary
 // return number of occurences of word in the training set
 func GetWordCount(word string) int {
-	//
+	connection := pool.Get()
+	reply, err := redis.Values(connection.Do("GET", DBDICTPREFIX + word))
+	connection.Close()
+	
+	if err != nil {
+	    return nil
+	} else {
+		return reply
+	}
 }
 
-// builds vectors of features for every sentence
-// feature vector:
+// Builds vectors of features for every sentence
+//
+// Feature vector:
 //	1. position within paragraph
 //	2. number of terms in sentence
 //	3. how likely the terms are given the baseline of terms
 //	4. how likely the terms are given the document terms
 func ComputeFeatures(sentence nlptk.Sentence, document_dict map[string]int) []float64 {
 	
-	all_words := float64(GetWordCount("TOTAL"))
+	all_words := float64(GetWordCount(DBDICTPREFIX + "TOTAL"))
 	all_doc_words := float64(document_dict["TOTAL"])	
 
 	words := sentence.GetParts()
@@ -104,6 +120,7 @@ func ComputeFeatures(sentence nlptk.Sentence, document_dict map[string]int) []fl
 	return features
 }
 
+
 struct HiddenMM type {
 	States []int
 	A [][]float64
@@ -114,16 +131,81 @@ struct HiddenMM type {
 // process full text and human-created summarization
 // to initialize Hidden Markov Model of 2s+1 states
 // (s - number of sentences in full text)
-// with probabilitiy of the sentence occurrence in the summary
-func (* HiddenMM) InitHMM(filename string) [][]float64 {
-	// open two files
-	// find and write down number of sentence which appeared in the summary
+// with probability of the sentence occurrence in the summary
+func (* HiddenMM) InitHMM(filename string) [][]float64, []int {
+	//
+}
+
+
+func ObserveFile(filename string) [][]float64, []int {
+
+	full, err := os.Open(FULL + filename)
+
+	if err != nil {
+		fmt.Println("Error reading file", FULL + filename)
+		os.Exit(1)
+	}
+
+	summ, err := os.Open(SUMM + filename)
+
+	if err != nil {
+		fmt.Println("Error reading file", SUMM + filename)
+		os.Exit(1)
+	}
+
+	observations := make([][]float64, 10, 10)
+	sentence_counter := make([]int, 10, 10)
+	sentence_number := 0
+	paragraph_number := 0
+
+	reader_summ := bufio.NewReader(summ)
+	spar, e := reader_summ.ReadBytes('\n')
+	summarization := nlptk.Paragraph{paragraph_number, string(spar)}
+	sum_sentences := summarization.GetParts()
+
+	reader_full := bufio.NewReader(full)
+	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
+		paragraph := nlptk.Paragraph{paragraph_number, string(bpar)}
+		sentences := paragraph.GetParts()
+		
+		if len(sentences) == 0 {
+			continue
+		}
+
+		for _, s := range sentences {
+			observations[sentence_number] = make([]float64, 4, 4)
+			observations = append(observations, ComputeFeatures(s))
+
+			sentence_counter[sentence_number] = 0
+
+			for _, sum := range sum_sentences {
+				if s == sum {
+					sentence_counter[sentence_number] = 1
+					break
+				}
+			}
+			
+			sentence_number++
+			ExtendSlice(observations, sentence_number)
+			ExtendSlice(sentence_counter, sentence_number)
+		}
+		paragraph_number++
+	}
+	return observations, sentence_counter
+}
+
+func ExtendSlice(slice []interface{}, limit int) {
+	if limit == len(slice) - 1 {
+		temp := make([]int, len(slice)+10, len(slice)+10)
+		copy(temp, slice)
+		slice = temp
+	}
 }
 
 //
 func CheckConvergence(old_likelihood float64, new_likelihood float64,
 	current_iter int, max_iter int, tolerance float64) bool {
-	//
+
 	if tolerance > 0 {
 		if math.Abs(old_likelihood - new_likelihood) <= tolerance {
 			return true
@@ -412,16 +494,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// count words from all files
-	// and update database dictionary
-	c := make(chan map[string]int)
-	
-	go func() {
-		for _, v := range(files_slice) {
-			c <- WordCount(SETDIR + v)
-		}
-		Store(<-c)
-	}()
+	for _, f := range files_slice {
+		InitHMM(f)
+	}
 
 	fmt.Println("Learning succeed!")
 }
