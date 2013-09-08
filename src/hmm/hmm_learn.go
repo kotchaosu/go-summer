@@ -17,8 +17,8 @@ const (
 	DBTRANSPREFIX = "#@#"
 	DBEMISPREFIX = "@#@"
 	DBDICTPREFIX = "#"
-	NSTATES = 250
-	NVALS = 2
+	NSTATES = 480
+	NVALS = 1
 )
 
 
@@ -87,16 +87,27 @@ func InitHMM(N, M int) HiddenMM {
 	fmt.Println("Creating model")
 
 	Pi := make([]float64, N, N)
-	Pi[0] = 1.0
+	
+	for i := range Pi {
+		Pi[i] = 1.0 / float64(N)
+	}
 
 	A := make([][]float64, N, N)
 	for i := range A {
 		A[i] = make([]float64, N, N)
+
+		for j := range A[i] {
+			A[i][j] = 1.0 / float64(N)
+		}
 	}
 
 	B := make([][]float64, N, N)
 	for i := range B {
 		B[i] = make([]float64, M, M)
+
+		for j := range B[i] {
+			B[i][j] = 1.0 / float64(M)
+		}
 	}
 
 	fmt.Println("A", len(A), len(A[0]))
@@ -126,8 +137,8 @@ func ObserveFile(filename string) ([][]float64, []int) {
 		os.Exit(1)
 	}
 
-	observations := make([][]float64, 10, 10)
-	sentence_counter := make([]int, 10, 10)
+	observations := make([][]float64, NSTATES, NSTATES)
+	sentence_counter := make([]int, NSTATES, NSTATES)
 	sentence_number := 0
 	paragraph_number := 0
 
@@ -149,29 +160,23 @@ func ObserveFile(filename string) ([][]float64, []int) {
 			observations[sentence_number] = make([]float64, 4, 4)
 			observations[sentence_number] = ComputeFeatures(nlptk.Sentence{i, s}, nlptk.WordCount(FULL + filename))
 
-			sentence_counter[sentence_number] = 0
-
+			not_in_summ := true
 			for _, sum := range sum_sentences {
 				if s == sum {
-					sentence_counter[sentence_number] = 1
+					not_in_summ = false
+					sentence_counter[2 * sentence_number + 1] = 1
 					break
 				}
-			}			
+			}
+			if not_in_summ {
+				sentence_counter[2 * sentence_number] = 1
+			}
 			sentence_number++
-
-			if sentence_number == len(observations) - 1 {
-				temp := make([][]float64, len(observations)+10, len(observations)+10)
-				copy(temp, observations)
-				observations = temp
-			}
-			
-			if sentence_number == len(sentence_counter) - 1 {
-				temp := make([]int, len(sentence_counter)+10, len(sentence_counter)+10)
-				copy(temp, sentence_counter)
-				sentence_counter = temp
-			}
 		}
 	}
+
+	fmt.Println("sequence", filename, len(sentence_counter), sentence_counter)
+
 	return observations, sentence_counter
 }
 
@@ -244,9 +249,12 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 		if c[t] > 0 {
 			for i := 0; i < h.N; i++ {
 				fwd[t][i] /= c[t]
+				fmt.Println("forward c[t]", c[t])
 			}
 		}
 	}
+	fmt.Println("forward scaling", c)
+
 	return fwd
 }
 
@@ -318,6 +326,9 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 		// for each sequence of observations
 		for i := 0; i < len(observations); i++ {
 			scaling := make([]float64, h.N)
+			
+			fmt.Println("A", h.A[0], "new_likelihood", new_likelihood)
+			fmt.Println("#", scaling)
 
 			// I STEP
 			// calculate forward & backward probability
@@ -368,10 +379,13 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 			for t := 0; t < len(scaling); t++ {
 				new_likelihood += math.Log(scaling[t])
 			}
+			fmt.Println("new_likelihood for sequence", new_likelihood)
 		}
 
 		// average likelihood
+		fmt.Println("A1", new_likelihood)
 		new_likelihood /= float64(len(observations))
+		fmt.Println("A2", new_likelihood)
 
 		// check convergence
 		if CheckConvergence(old_likelihood, new_likelihood, iter, iterations, tolerance) {
@@ -386,7 +400,7 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 			// init probabilities
 			for k := 0; k < h.N; k++ {
 				sum := 0.0
-				for i := 0; i < h.N; i++ {
+				for i := 0; i < len(observations); i++ {
 					sum += gamma[i][0][k]
 				}
 				h.Pi[k] = sum / float64(h.N)
@@ -396,7 +410,7 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 			for i := 0; i < h.N; i++ {
 				for j := 0; j < h.N; j++ {
 					den, num := 0.0, 0.0
-					for k := 0; k < h.N; k++ {
+					for k := 0; k < len(observations); k++ {
 						T := len(observations[k])
 
 						for l := 0; l < T - 1; l++ {
@@ -417,9 +431,9 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 
 			// emission probabilities
 			for i := 0; i < h.N; i++ {
-				for j := 0; j < h.N; j++ {
+				for j := 0; j < h.M; j++ {
 					den, num := 0.0, 0.0
-					for k := 0; k < h.N; k++ {
+					for k := 0; k < len(observations); k++ {
 						T := len(observations[k])
 						for l := 0; l < T; l++ {
 							if observations[k][l] == j {
@@ -482,6 +496,9 @@ func main() {
 	}
 
 	hmm := InitHMM(NSTATES, NVALS)
+
+	// fmt.Println("A PRE", hmm.A)
+
 	// prepare learning set
 	// for every input file
 	//   for every state in file
