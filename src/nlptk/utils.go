@@ -1,6 +1,11 @@
 package nlptk
 
-import "strings"
+import (
+	"strings"
+	"bufio"
+	"os"
+	"fmt"
+	)
 
 type Texter interface {
 	// returns slice of smaller parts inside
@@ -95,4 +100,37 @@ func (d Dict) showProbability (str1, str2 string) float64 {
      	 den += v
      }
      return float64(d[str1][str2])/float64(den)
+}
+
+// extracts, trims from special signs and counts "bare" words in learning set
+func WordCount(file_path string) map[string]int {
+	file, err := os.Open(file_path)
+
+	if err != nil {
+		fmt.Println("Error reading file", file_path)
+		os.Exit(1)
+	}
+
+	reader := bufio.NewReader(file)
+	word_counter := make(map[string]int)
+
+	for bpar, e := reader.ReadBytes('\n'); e == nil; bpar, e = reader.ReadBytes('\n') {
+		paragraph := Paragraph{0, string(bpar)}
+		sentences := paragraph.GetParts()
+		
+		for _, sentence := range sentences {
+			s := Sentence{0, sentence}
+			words := s.GetParts()
+
+			if len(words) == 0 {
+				continue
+			}
+
+			for _, word := range words {
+				word_counter[word]++
+				word_counter["TOTAL"]++
+			}
+		}
+	}
+	return word_counter
 }
