@@ -109,7 +109,7 @@ func ComputeFeatures(sentence nlptk.Sentence, document_dict map[string]int) []fl
 
 		baseline_likelihood += math.Log10(base_count/all_words)
 		document_likelihood += math.Log10(doc_count/all_doc_words)
-	}
+	}http://www.youtube.com/watch?v=d4LdKapQaaE
 
 	features := [...]float64{
 		float64(number_of_sentence),
@@ -122,21 +122,36 @@ func ComputeFeatures(sentence nlptk.Sentence, document_dict map[string]int) []fl
 
 
 struct HiddenMM type {
-	States []int
+	// number of states
+	N int
+	// number of observations per state
+	M int
+	// transition probabilities N x N
 	A [][]float64
+	// emission probabilities N x M
 	B [][]float64
-	pi []float64
+	// initial probability distribution vector
+	Pi []float64
 }
 
-// process full text and human-created summarization
-// to initialize Hidden Markov Model of 2s+1 states
-// (s - number of sentences in full text)
-// with probability of the sentence occurrence in the summary
-func (* HiddenMM) InitHMM(filename string) [][]float64, []int {
-	//
+func (* HiddenMM) InitHMM(N, M int) {
+	HiddenMM.Pi := make([]float64, N, N)
+	HiddenMM.Pi[0] = 1.0
+
+	HiddenMM.A := make([][]float64, N, N)
+	for i := range HiddenMM.A {
+		HiddenMM.A[i] = make([]float64, N, N)
+	}
+
+	HiddenMM.B := make([][]float64, N, N)
+	for i := range HiddenMM.B {
+		HiddenMM.B[i] = make([]float64, M, M)
+	}
 }
 
-
+// Analyze full text and summarization to prepare observations:
+//	- vectors of features
+//	- binary table of sentence in summarization presence
 func ObserveFile(filename string) [][]float64, []int {
 
 	full, err := os.Open(FULL + filename)
@@ -172,9 +187,9 @@ func ObserveFile(filename string) [][]float64, []int {
 			continue
 		}
 
-		for _, s := range sentences {
+		for i, s := range sentences {
 			observations[sentence_number] = make([]float64, 4, 4)
-			observations = append(observations, ComputeFeatures(s))
+			observations[sentence_number] = ComputeFeatures(nlptk.Sentence{i, s}, WordCount(FULL + filename))
 
 			sentence_counter[sentence_number] = 0
 
@@ -183,13 +198,11 @@ func ObserveFile(filename string) [][]float64, []int {
 					sentence_counter[sentence_number] = 1
 					break
 				}
-			}
-			
+			}			
 			sentence_number++
 			ExtendSlice(observations, sentence_number)
 			ExtendSlice(sentence_counter, sentence_number)
 		}
-		paragraph_number++
 	}
 	return observations, sentence_counter
 }
@@ -227,12 +240,10 @@ func CheckConvergence(old_likelihood float64, new_likelihood float64,
 // calculate probability of generated sequence
 func (* HiddenMM) Forward(observations []float64, *c []float64) [][]float64 {
 	T := len(observations)
-	pi := make([]float64, N)
-	A := make([][]float64, N)
-
+	pi, A, B := HiddenMM.Pi, HiddenMM.A, HiddenMM.B
 	fwd := make([][]float64, T)
 
-	for i := range(fwd) {
+	for i := range fwd {
 		fwd[i] = make([]float64, States)
 	}
 	c := make([]float64, T)
@@ -280,12 +291,10 @@ func (* HiddenMM) Forward(observations []float64, *c []float64) [][]float64 {
 // backward variables - use the same 'forward' scaling factor
 func (* HiddenMM) Backward(observations []float64, c []float64) [][]float64 {
 	T := len(observations)
-	pi := make([]float64, N)
-	A := make([][]float64, N)
-
+	pi, A, B := HiddenMM.Pi, HiddenMM.A, HiddenMM.B
 	bwd := make([][]float64, T)
 
-	for i := range(bwd) {
+	for i := range bwd {
 		bwd[i] = make([]float64, States)
 	}
 	// STEP 1
@@ -320,6 +329,7 @@ func (* HiddenMM) Learn(observations [][]float64, iterations int, tolerance floa
 
 	pi := make([]float64, N)  // probabilities
 	A := make([][]float64, N)  // transitions
+	B := make([][]float64, )  // emissions
 
 	// init
 	epsilon := make([][]float64, N)
