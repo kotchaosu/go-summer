@@ -1,3 +1,7 @@
+// For optimising runtime
+// Assuming only two possible transitions for each states
+// 1 - summary, 2 - non-summary
+
 // learning tools for HMM parameters
 package main
 
@@ -94,10 +98,10 @@ func InitHMM(N, M int) HiddenMM {
 
 	A := make([][]float64, N, N)
 	for i := range A {
-		A[i] = make([]float64, N, N)
+		A[i] = make([]float64, 2, 2)
 
 		for j := range A[i] {
-			A[i][j] = 1.0 / float64(N)
+			A[i][j] = 1.0 / float64(2)
 		}
 	}
 
@@ -172,11 +176,6 @@ func ObserveFile(filename string) ([][]float64, []int) {
 				sentence_counter[2 * sentence_number] = 1
 			}
 			sentence_number++
-			fmt.Println(sentence_number, 2*sentence_number, NSTATES)
-			// TODO: SAFETY SWITCH - REMOVE LATER
-			if sentence_number == NSTATES / 2  {
-				break
-			}
 		}
 	}
 
@@ -220,8 +219,9 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 	// STEP 1
 	// init
 	for i := 0; i < h.N; i++ {
-		fwd[0][i] = h.Pi[i] * h.B[i][observation[0]]
 		c[0] += fwd[0][i]
+		fwd[0][i] = h.Pi[i] * h.B[i][observation[0]]
+		// c[0] += fwd[0][i]
 	}
 
 	// scaling
@@ -243,7 +243,7 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 			sum := 0.0
 
 			for j := 0; j < h.N; j++ {
-				sum += fwd[t - 1][j] * h.A[j][i]
+				sum += fwd[t - 1][j] * h.A[j][i % 2]
 			}
 			fwd[t][i] = sum * p
 
@@ -254,7 +254,7 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 		if c[t] > 0 {
 			for i := 0; i < h.N; i++ {
 				fwd[t][i] /= c[t]
-				fmt.Println("forward c[t]", c[t])
+				// fmt.Println("forward c[t]", c[t])
 			}
 		}
 	}
@@ -267,8 +267,8 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 // Kalman smoothing
 // Backward variables - use the same 'forward' scaling factor
 // func (* HiddenMM) Backward(observations []float64, c []float64) [][]float64 {
-func (h *HiddenMM) Backward(observations []int, c []float64) [][]float64 {
-	T := len(observations)
+func (h *HiddenMM) Backward(observation []int, c []float64) [][]float64 {
+	T := len(observation)
 	bwd := make([][]float64, T)
 
 	for i := range bwd {
@@ -286,7 +286,7 @@ func (h *HiddenMM) Backward(observations []int, c []float64) [][]float64 {
 		for i := 0; i < h.N; i++ {
 			sum := 0.0
 			for j := 0; j < h.N; j++ {
-				sum += h.A[i][j] * h.B[j][observations[t + 1]] * bwd[t + 1][j]
+				sum += h.A[i][j % 2] * h.B[j][observation[t + 1]] * bwd[t + 1][j]
 			}
 			bwd[t][i] += sum / c[t]
 		}
@@ -366,7 +366,7 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 
 				for k := 0; k < h.N; k++ {
 					for l := 0; l < h.N; l++ {
-						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * h.B[l][observations[i][j + 1]]
+						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l % 2] * bwd[j + 1][l] * h.B[l][observations[i][j + 1]]
 						s += epsilon[i][j][k][l]
 					}
 				}
@@ -408,7 +408,7 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 				for i := 0; i < len(observations); i++ {
 					sum += gamma[i][0][k]
 				}
-				h.Pi[k] = sum / float64(h.N)
+				h.Pi[k] = sum / float64(len(observations))
 			}
 
 			// transition probabilities
@@ -427,9 +427,9 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 					}
 
 					if den == 0.0 {
-						h.A[i][j] = 0.0
+						h.A[i][j % 2] = 0.0
 					} else {
-						h.A[i][j] = num / den
+						h.A[i][j % 2] = num / den
 					}
 				}
 			}
@@ -502,7 +502,7 @@ func main() {
 
 	hmm := InitHMM(NSTATES, NVALS)
 
-	// fmt.Println("A PRE", hmm.A)
+	fmt.Println("A PRE", hmm.A)
 
 	// prepare learning set
 	// for every input file
