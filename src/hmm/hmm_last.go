@@ -11,8 +11,10 @@ import (
 	"bufio"
 	"os"
 	"strings"
+	"strconv"
 	"nlptk"
 	"dbconn"
+	"redis/redis"
 )
 
 const (
@@ -23,7 +25,7 @@ const (
 	DBB = "@#@"
 	DBPI = "@@@"
 	
-	DBDICTPREFIX = "#"
+	// DICTPREFIX = "#"
 	
 	NSTATES = 300
 	NVALS = 300
@@ -481,6 +483,11 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 }
 
 
+func Int2Str(i int) string {
+	return strconv.FormatInt(int64(i), 10)
+}
+
+
 func (h *HiddenMM) Store() {
 	pool := dbconn.Pool
 	connection := pool.Get()
@@ -488,19 +495,28 @@ func (h *HiddenMM) Store() {
 	fmt.Println("Saving transition matrix A...")
 	connection.Send("MULTI")
 	for i := range h.A {
-		connection.Send("LPUSH", DBA + string(i), h.A[i])
+		for j := range h.A[i] {
+			connection.Send("LPUSH", DBA + Int2Str(i), h.A[i][j])
+			fmt.Println("LPUSH", DBA + Int2Str(i), h.A[i][j])
+		}
 	}
 	connection.Do("EXEC")
 
 	fmt.Println("Saving emission matrix B...")
 	connection.Send("MULTI")
 	for i := range h.B {
-		connection.Send("LPUSH", DBA + string(i), h.B[i])
+		for j := range h.B[i] {
+			connection.Send("LPUSH", DBB + Int2Str(i), h.B[i][j])
+			fmt.Println("LPUSH", DBB + Int2Str(i), h.B[i][j])
+		}
 	}
 	connection.Do("EXEC")
 
 	fmt.Println("Saving probability distribution Pi...")
-	connection.Do("LPUSH", DBPI, h.Pi)
+	for i := range h.Pi {
+		connection.Do("LPUSH", DBPI, h.Pi[i])
+		fmt.Println("LPUSH", DBPI, h.Pi[i])
+	}
 
 	connection.Close()
 }
@@ -513,77 +529,92 @@ func Load() HiddenMM {
 	A := make([][]float64, NSTATES, NSTATES)
 
 	for i := range A {
-		A[i] = make([]float64, NSTATES, NSTATES)
-		A[i], err := connection.Do("LRANGE", DBA + string(i), 1, -1)
+		loadedA, err := redis.Values(connection.Do("LRANGE", DBA + Int2Str(i), 0, -1))
 
 		if err != nil {
 			fmt.Println("Error while reading A[", i, "]")
 			os.Exit(1)
 		}
+		A[i] = make([]float64, NSTATES, NSTATES)
+		
+		for j := range A[i] {
+			// fmt.Println("A", len(A), len(A[i]), j, len(loadedA))
+			A[i][j], _ = redis.Float64(loadedA[j], err)
+		}
 	}
 
-	B := make([][]float64, hmm.NSTATES, NSTATES)
+	B := make([][]float64, NSTATES, NSTATES)
 
 	for i := range B {
-		B[i] = make([]float64, NVALS, NVALS)
-		B[i], err = connection.Do("LRANGE", DBB + string(i), 1, -1)
+		loadedB, err := redis.Values(connection.Do("LRANGE", DBB + Int2Str(i), 0, -1))
 
 		if err != nil {
 			fmt.Println("Error while reading B[", i, "]")
 			os.Exit(1)
 		}
+		B[i] = make([]float64, NVALS, NVALS)
+
+		for j := range B[i] {
+			// fmt.Println("B", len(B), len(B[i]), j, len(loadedB))
+			B[i][j], _ = redis.Float64(loadedB[j], err)
+		}
 	}
 
-	Pi := make([]float64, NSTATES, NSTATES)
-	Pi, err = connection.Do("LRANGE", DBPI, 1, -1)
+	loadedPi, err := redis.Values(connection.Do("LRANGE", DBPI, 0, -1))
 
 	if err != nil {
 		fmt.Println("Error while reading Pi")
 		os.Exit(1)
 	}
+	Pi := make([]float64, NSTATES, NSTATES)
+
+	for i := range Pi {
+		Pi[i], _ = redis.Float64(loadedPi[i], err)
+	}
+
 	connection.Close()
 
 	return HiddenMM{NSTATES, NVALS, A, B, Pi}
 }
 
 
-// func main() {
-// 	dir, err := os.Open(FULL)
+func Educate() {
+	dir, err := os.Open(FULL)
 
-// 	if err != nil {
-// 		fmt.Println("Error reading directory", FULL)
-// 		os.Exit(1)
-// 	}
+	if err != nil {
+		fmt.Println("Error reading directory", FULL)
+		os.Exit(1)
+	}
 
-// 	// select all filenames from open directory
-// 	files_slice, err := dir.Readdirnames(0)
+	// select all filenames from open directory
+	files_slice, err := dir.Readdirnames(0)
 
-// 	if err != nil {
-// 		fmt.Println("Error reading filenames from directory", FULL)
-// 		os.Exit(1)
-// 	}	
+	if err != nil {
+		fmt.Println("Error reading filenames from directory", FULL)
+		os.Exit(1)
+	}	
 
-// 	err = dir.Close()
+	err = dir.Close()
 
-// 	if err != nil {
-// 		fmt.Println("Error closing directory", FULL)
-// 		os.Exit(1)
-// 	}
-// 	hmm := InitHMM(NSTATES, NVALS)
+	if err != nil {
+		fmt.Println("Error closing directory", FULL)
+		os.Exit(1)
+	}
+	hmm := InitHMM(NSTATES, NVALS)
 
-// 	observed_sequence := make([][]int, len(files_slice))
+	observed_sequence := make([][]int, len(files_slice))
 
-// 	for i, f := range files_slice {
-// 		fmt.Println("Processing", f, "file")
-// 		// learn only sequences for now
-// 		_, observed_sequence[i] = ObserveFile(f)
-// 	}
+	for i, f := range files_slice {
+		fmt.Println("Processing", f, "file")
+		// learn only sequences for now
+		_, observed_sequence[i] = ObserveFile(f)
+	}
 
-// 	fmt.Println("Begin learning...")
-// 	hmm.Learn(observed_sequence, 0, 0.01)
+	fmt.Println("Begin learning...")
+	hmm.Learn(observed_sequence, 0, 0.01)
 	
-// 	fmt.Println("Saving model in database...")
-// 	hmm.Store()
+	fmt.Println("Saving model in database...")
+	hmm.Store()
 
-// 	fmt.Println("Learning succeed!")
-// }
+	fmt.Println("Learning succeed!")
+}
