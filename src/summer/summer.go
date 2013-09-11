@@ -7,16 +7,16 @@ import (
 	"bufio"
 	"hmm"
 	"fmt"
-	"dbconn"
-	"redis/redis"
+	"nlptk"
+	"strings"
 	)
 
 
-const FILE = "/home/maxabsent/Documents/"
+const FILE = "/home/maxabsent/Documents/learning_set/evaluation/text_0"
 
 
-func ObserveFile(filename string, h *hmm.HiddenMM) ([][]float64, []int) {
-	full, err := os.Open(filepath)
+func Summarize(filename string, h *hmm.HiddenMM) string {
+	full, err := os.Open(filename)
 
 	if err != nil {
 		fmt.Println("Error reading file", filename)
@@ -42,7 +42,9 @@ func ObserveFile(filename string, h *hmm.HiddenMM) ([][]float64, []int) {
 			// search highest probability through transition matrix
 			max_prob := 0.0
 			next_state := 0
-			for i, v := range h.A[current_state] {
+
+			for i := current_state + 1; i < h.N; i++ {
+				v := h.A[current_state][i]
 				if v > max_prob {
 					max_prob = v
 					next_state = i
@@ -51,26 +53,24 @@ func ObserveFile(filename string, h *hmm.HiddenMM) ([][]float64, []int) {
 			current_state = next_state
 
 			if current_state % 2 != 0 {
+				fmt.Println(s)
 				summarization = append(summarization, s)
 			}
 
 			sentence_number++
 			// safety switch
-			if sentence_number == h.N {
-				return summarization
+			if sentence_number == h.N / 2 {
+				return strings.Join(summarization, ".")
 			}
 		}
 	}
-
-	return summarization
+	return strings.Join(summarization, ".")
 }
 
 func main() {
+	// hmm.Educate()
 	// read model from db
 	markovmodel := hmm.Load()
-	// open and process file
-	for _, v := range Summarize(FILE, &markovmodel) {
-		// print summarization
-		fmt.Println(v, ".")
-	}
+	// print summarization
+	fmt.Println(Summarize(FILE, &markovmodel))
 }
