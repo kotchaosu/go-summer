@@ -8,11 +8,11 @@ import (
 	)
 
 type Texter interface {
-	// returns slice of smaller parts inside
+	// Returns slice of smaller parts inside
 	// for paragraphs -> sentences
 	// for sentence -> words
 	GetParts() []string
-	// checks if text attribute contains string
+	// Checks if text attribute contains string
 	IsIn(str string) bool 
 	CreateBigrams () [][2]string
 }
@@ -23,11 +23,25 @@ type Paragraph struct {
 }
 
 func (p *Paragraph) GetParts () []string {
-	str := p.Text
-	return strings.Split(str, ".")
+	// Extracts slice of pure sentences from paragraph
+	splitted := make([]string, 0, 0)
+
+	// Extract quotes
+	for _, v1 := range strings.Split(p.Text, "\"") {
+		// Extract sentences
+		for _, v2 := range strings.Split(v1, ".") {
+			// Avoid analyzing empty or one-character sentences
+			if len(v2) >= 2 {
+				// Trim special characters
+				splitted = append(splitted, strings.Trim(v2, "!?,.'()"))
+			}
+		}
+	}
+	return splitted
 }
 
 func (p *Paragraph) IsIn (str string) bool {
+	// Checks if paragraph contains string
 	if strings.Count(p.Text, str) != 0 {
 		return true
 	}
@@ -40,8 +54,7 @@ type Sentence struct {
 }
 
 func (s *Sentence) GetParts () []string {
-	str := s.Text
-	return strings.Fields(str)
+	return strings.Fields(s.Text)
 }
 
 func (s *Sentence) IsIn (str string) bool {
@@ -78,7 +91,7 @@ func (s *Sentence) CreateBigrams () [][]string {
 	return bigrams
 }
 
-// dictionary for preparing bigram statistics
+// Dictionary for preparing bigram statistics
 // maps words to its successors in bigrams
 // and next to number of times the successor appeared
 type Dict map[string]map[string]int
