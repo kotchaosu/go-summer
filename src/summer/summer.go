@@ -5,17 +5,20 @@ package main
 import (
 	"os"
 	"bufio"
-	"hmm"
+	"hmm0"
 	"fmt"
 	"nlptk"
 	"strings"
 	)
 
+const(
+	FULL = "/home/maxabsent/Documents/learning_set/full_texts/"
+	SUMM = "/home/maxabsent/Documents/learning_set/summarizations/"
+	FILE = FULL + "text_6"
+)
+	
 
-const FILE = "/home/maxabsent/Documents/learning_set/evaluation/text_0.txt"
-
-
-func Summarize(filename string, h *hmm.HiddenMM) string {
+func Summarize(filename string, h *hmm0.HiddenMM) string {
 	full, err := os.Open(filename)
 
 	if err != nil {
@@ -29,9 +32,16 @@ func Summarize(filename string, h *hmm.HiddenMM) string {
 	
 	current_state := 0
 
+	output_seq := make([]int, 0, 0)
+
 	reader_full := bufio.NewReader(full)
 	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
 		paragraph := nlptk.Paragraph{paragraph_number, string(bpar)}
+
+		if len(paragraph.Text) <= 1 {
+			continue
+		}
+
 		sentences := paragraph.GetParts()
 
 		if len(sentences) == 0 {
@@ -53,6 +63,7 @@ func Summarize(filename string, h *hmm.HiddenMM) string {
 
 			if current_state % 2 != 0 {
 				summarization = append(summarization, s)
+				output_seq = append(output_seq, 0)
 			}
 
 			current_state = next_state
@@ -64,21 +75,19 @@ func Summarize(filename string, h *hmm.HiddenMM) string {
 			}
 		}
 	}
+	fmt.Println(output_seq)
 	return strings.Join(summarization, ".")
 }
 
 func main() {
-	hmm.Educate()
+	hmm0.Educate(FULL, SUMM)
 	// read model from db
-	markovmodel := hmm.Load()
+	markovmodel := hmm0.Load()
 	// print summarization
 	likelihood := 0.0
-	input_seq := make([]int, markovmodel.N / 2)
-
-	for i := range input_seq {
-		input_seq[i] = 2 * i + 1
-	}
+	input_seq := make([]int, 30)
 
 	fmt.Println(Summarize(FILE, &markovmodel))
+	fmt.Println(input_seq)
 	fmt.Println(markovmodel.Viterbi(input_seq, &likelihood))
 }
