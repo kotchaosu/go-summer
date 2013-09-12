@@ -1,5 +1,5 @@
 // package extracts and counts all words from learning set
-package hmm
+package dict
 
 import (
 	"bufio"
@@ -7,12 +7,29 @@ import (
 	"nlptk"
 	"os"
 	"dbconn"
+	"redis/redis"
 )
 
 const (
-	SETDIR       = "/home/maxabsent/Documents/learning_set/full_texts/"
 	DBDICTPREFIX = "#"
 )
+
+
+func GetWordCount(word string) int {
+	pool := dbconn.Pool
+	connection := pool.Get()
+
+	reply, err := redis.Values(connection.Do("GET", DBDICTPREFIX + word))
+	
+	if err != nil {
+		fmt.Println("DB: Error reading word", word)
+		os.Exit(1)
+	}
+	connection.Close()
+
+	count, _ := redis.Int(reply, err)
+	return count	
+}
 
 // Extracts, trims from special signs and counts "bare" words in learning set.
 // Result dictionary is sent to channel.
@@ -68,11 +85,11 @@ func Store(dictionary chan map[string]int) {
 	connection.Close()
 }
 
-func main() {
-	dir, err := os.Open(SETDIR)
+func Learn(dirpath string) {
+	dir, err := os.Open(dirpath)
 
 	if err != nil {
-		fmt.Println("Error reading directory", SETDIR)
+		fmt.Println("Error reading directory", dirpath)
 		os.Exit(1)
 	}
 
@@ -80,14 +97,14 @@ func main() {
 	files_slice, err := dir.Readdirnames(0)
 
 	if err != nil {
-		fmt.Println("Error reading filenames from directory", SETDIR)
+		fmt.Println("Error reading filenames from directory", dirpath)
 		os.Exit(1)
 	}
 
 	err = dir.Close()
 
 	if err != nil {
-		fmt.Println("Error closing directory", SETDIR)
+		fmt.Println("Error closing directory", dirpath)
 		os.Exit(1)
 	}
 
