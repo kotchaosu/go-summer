@@ -12,7 +12,7 @@ import (
 	)
 
 
-const FILE = "/home/maxabsent/Documents/learning_set/evaluation/text_0"
+const FILE = "/home/maxabsent/Documents/learning_set/evaluation/text_0.txt"
 
 
 func Summarize(filename string, h *hmm.HiddenMM) string {
@@ -50,12 +50,12 @@ func Summarize(filename string, h *hmm.HiddenMM) string {
 					next_state = i
 				}
 			}
-			current_state = next_state
 
 			if current_state % 2 != 0 {
-				fmt.Println(s)
 				summarization = append(summarization, s)
 			}
+
+			current_state = next_state
 
 			sentence_number++
 			// safety switch
@@ -68,9 +68,17 @@ func Summarize(filename string, h *hmm.HiddenMM) string {
 }
 
 func main() {
-	// hmm.Educate()
+	hmm.Educate()
 	// read model from db
 	markovmodel := hmm.Load()
 	// print summarization
+	likelihood := 0.0
+	input_seq := make([]int, markovmodel.N / 2)
+
+	for i := range input_seq {
+		input_seq[i] = 2 * i + 1
+	}
+
 	fmt.Println(Summarize(FILE, &markovmodel))
+	fmt.Println(markovmodel.Viterbi(input_seq, &likelihood))
 }
