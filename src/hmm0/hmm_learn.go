@@ -1,9 +1,5 @@
-// For optimising runtime
-// Assuming only two possible transitions for each states
-// 1 - summary, 2 - non-summary
-
-// learning tools for HMM parameters
-package hmm
+// Extracts sentences based on their absolute position in text
+package hmm0
 
 import (
 	"fmt"
@@ -18,36 +14,31 @@ import (
 )
 
 const (
-	FULL = "/home/maxabsent/Documents/learning_set/full_texts/"
-	SUMM = "/home/maxabsent/Documents/learning_set/summarizations/"
-	
 	DBA = "@@#"
 	DBB = "@#@"
 	DBPI = "@@@"
-	
-	// DICTPREFIX = "#"
-	
-	NSTATES = 300
-	NVALS = 300
+		
+	NSTATES = 160
+	NVALS = 2
 )
 
 
 // Analyze full text and summarization to prepare observations:
 //	- vectors of features
 //	- binary table of sentence in summarization presence
-func ObserveFile(filename string) []int {
+func ObserveFile(filename, full_dir, summ_dir string) []int {
 
-	full, err := os.Open(FULL + filename)
+	full, err := os.Open(full_dir + filename)
 
 	if err != nil {
-		fmt.Println("Error reading file", FULL + filename)
+		fmt.Println("Error reading file", full_dir + filename)
 		os.Exit(1)
 	}
 
-	summ, err := os.Open(SUMM + filename)
+	summ, err := os.Open(summ_dir + filename)
 
 	if err != nil {
-		fmt.Println("Error reading file", SUMM + filename)
+		fmt.Println("Error reading file", summ_dir + filename)
 		os.Exit(1)
 	}
 
@@ -77,9 +68,9 @@ func ObserveFile(filename string) []int {
 		// Check if sentences appear in the summary
 		for _, s := range sentences {
 			if strings.Contains(sum_sentences, s) {
-				sentence_counter = append(sentence_counter, 2 * sentence_number + 1)
+				sentence_counter = append(sentence_counter, 0)
 			} else {
-				sentence_counter = append(sentence_counter, 2 * sentence_number)
+				sentence_counter = append(sentence_counter, 1)
 			}
 			sentence_number++
 
@@ -581,11 +572,11 @@ func Load() HiddenMM {
 }
 
 
-func Educate() {
-	dir, err := os.Open(FULL)
+func Educate(full_dir, summ_dir string) {
+	dir, err := os.Open(full_dir)
 
 	if err != nil {
-		fmt.Println("Error reading directory", FULL)
+		fmt.Println("Error reading directory", full_dir)
 		os.Exit(1)
 	}
 
@@ -593,14 +584,14 @@ func Educate() {
 	files_slice, err := dir.Readdirnames(0)
 
 	if err != nil {
-		fmt.Println("Error reading filenames from directory", FULL)
+		fmt.Println("Error reading filenames from directory", full_dir)
 		os.Exit(1)
 	}	
 
 	err = dir.Close()
 
 	if err != nil {
-		fmt.Println("Error closing directory", FULL)
+		fmt.Println("Error closing directory", full_dir)
 		os.Exit(1)
 	}
 	hmm := InitHMM(NSTATES, NVALS)
@@ -610,7 +601,7 @@ func Educate() {
 	for i, f := range files_slice {
 		fmt.Println("Processing", f, "file")
 		// learn only sequences for now
-		_, observed_sequence[i] = ObserveFile(f)
+		observed_sequence[i] = ObserveFile(f, full_dir, summ_dir)
 	}
 
 	fmt.Println("Begin learning...")
