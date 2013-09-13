@@ -42,8 +42,9 @@ func ObserveFile(filename, full_dir, summ_dir string) []int {
 		fmt.Println("Error reading file", summ_dir + filename)
 		os.Exit(1)
 	}
+	sentence_counter := make([]int, 0, 0)
 
-	sentence_counter := make([]int, NSTATES, NSTATES)
+	// sentence_counter := make([]int, NSTATES, NSTATES)
 	sentence_number := 0
 	paragraph_number := 0
 
@@ -68,10 +69,8 @@ func ObserveFile(filename, full_dir, summ_dir string) []int {
 
 		// Check if sentences appear in the summary
 		for i, s := range sentences {
-			if strings.Contains(sum_sentences, s) {
-				sentence_counter[2 * sentence_number + 1] = i + 1
-			} else {
-				sentence_counter[2 * sentence_number] = i + 1
+			if strings.Contains(sum_sentences, s[:len(s)-1]) {
+				sentence_counter = append(sentence_counter, i)
 			}
 			sentence_number++
 
@@ -91,7 +90,7 @@ func ObserveFile(filename, full_dir, summ_dir string) []int {
 
 // Evaluates summarization - return % of sentences in human-created summarization
 // which appeared in program-created one
-func EvaluateSummary(filename, human_summ_dir, auto_summ_dir string) float64 {
+func EvaluateSummary(filename, human_summ_dir, auto_summ_dir string) (float64, float64) {
 
 	human, err := os.Open(human_summ_dir + filename)
 
@@ -126,7 +125,10 @@ func EvaluateSummary(filename, human_summ_dir, auto_summ_dir string) float64 {
 		}
 	}
 
-	return float64(coverage) / float64(len(auto.GetParts()))
+	auto_coverage := float64(coverage) / float64(len(auto_summarization.GetParts()))
+	human_coverage := float64(coverage) / float64(len(human_summarization.GetParts()))
+
+	return human_coverage, auto_coverage
 }
 
 
@@ -492,6 +494,7 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 					min_state, min_weight = i, weight
 				}
 			}
+			// fmt.Println(j, t, observation[t])
 			a[j][t] = min_weight - math.Log(h.B[j][observation[t]])
 			s[j][t] = min_state
 		}
