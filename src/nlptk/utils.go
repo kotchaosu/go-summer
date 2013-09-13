@@ -29,7 +29,7 @@ func (p *Paragraph) GetParts () []string {
 	// Extract quotes
 	for _, v1 := range strings.Split(p.Text, "\"") {
 		// Extract sentences
-		for _, v2 := range strings.Split(v1, ".") {
+		for _, v2 := range strings.Split(v1, ". ") {
 			// Avoid analyzing empty or one-character sentences
 			if len(v2) >= 2 {
 				// Trim special characters
