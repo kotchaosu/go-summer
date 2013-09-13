@@ -6,6 +6,7 @@ import (
 	"os"
 	"bufio"
 	"hmm1"
+	"hmm0"
 	"fmt"
 	"nlptk"
 	"strings"
@@ -32,7 +33,7 @@ func GetFileReader(filename string) *bufio.Reader {
 
 // Version for case #1 position in paragraph
 func CreateObservationSequence(filename string, length int) []int {
-	output := make([]int, length, length)
+	output := make([]int, 0, 0)
 	
 	sentence_number := 0
 	reader_full := GetFileReader(filename)
@@ -46,7 +47,8 @@ func CreateObservationSequence(filename string, length int) []int {
 		}
 
 		for i := range sentences {
-			output[2 * sentence_number + 1] = i + 1
+			output = append(output, 0)
+			output = append(output, i + 1)
 		}
 
 		if sentence_number++; 2 * sentence_number + 1 >= length {
@@ -78,7 +80,7 @@ func PrintSequence(filename string, sequence []int) string {
 		}
 
 		for _, s := range sentences {
-			if sequence[2 * sentence_number + 1] == 1 {
+			if sequence[2 * sentence_number + 1] == 0 {
 				output = append(output, s)
 			}
 
@@ -151,7 +153,7 @@ func Summarize(filename string, h *hmm1.HiddenMM) string {
 }
 
 func main() {
-	// hmm1.Educate(FULL, SUMM, 8, 0.01)
+	hmm1.Educate(FULL, SUMM, 8, 0.01)
 	// read model from db
 	markovmodel := hmm1.Load()
 	// print summarization
