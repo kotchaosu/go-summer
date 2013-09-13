@@ -17,8 +17,9 @@ const (
 	DBA = "@@#"
 	DBB = "@#@"
 	DBPI = "@@@"
-		
-	NSTATES = 160
+	
+	NSENT = 100	
+	NSTATES = 2 * NSENT
 	NVALS = 2
 )
 
@@ -42,7 +43,7 @@ func ObserveFile(filename, full_dir, summ_dir string) []int {
 		os.Exit(1)
 	}
 
-	sentence_counter := make([]int, 0, 0)
+	sentence_counter := make([]int, NSTATES, NSTATES)
 	sentence_number := 0
 	paragraph_number := 0
 
@@ -68,9 +69,9 @@ func ObserveFile(filename, full_dir, summ_dir string) []int {
 		// Check if sentences appear in the summary
 		for _, s := range sentences {
 			if strings.Contains(sum_sentences, s) {
-				sentence_counter = append(sentence_counter, 0)
+				sentence_counter[2 * sentence_number + 1] = 1
 			} else {
-				sentence_counter = append(sentence_counter, 1)
+				sentence_counter[2 * sentence_number] = 1
 			}
 			sentence_number++
 
@@ -432,9 +433,13 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 	}
 
 	//Init
+	// fmt.Println("PI", h.Pi)
+
 	for i := 0; i < h.N; i++ {
 		a[i][0] = (-1.0 * math.Log(h.Pi[i])) - math.Log(h.B[i][observation[0]])
+		// fmt.Println(a[i], h.Pi[i], h.B[i][observation[0]])
 	}
+
 	//Induction
 	for t := 1; t < T; t++ {
 		for j := 0; j < h.N; j++ {
@@ -490,7 +495,7 @@ func (h *HiddenMM) Store() {
 	connection.Send("MULTI")
 	for i := range h.A {
 		for j := range h.A[i] {
-			connection.Send("LPUSH", DBA + Int2Str(i), h.A[i][j])
+			connection.Send("RPUSH", DBA + Int2Str(i), h.A[i][j])
 			// fmt.Println("LPUSH", DBA + Int2Str(i), h.A[i][j])
 		}
 	}
@@ -500,7 +505,7 @@ func (h *HiddenMM) Store() {
 	connection.Send("MULTI")
 	for i := range h.B {
 		for j := range h.B[i] {
-			connection.Send("LPUSH", DBB + Int2Str(i), h.B[i][j])
+			connection.Send("RPUSH", DBB + Int2Str(i), h.B[i][j])
 			// fmt.Println("LPUSH", DBB + Int2Str(i), h.B[i][j])
 		}
 	}
@@ -508,7 +513,7 @@ func (h *HiddenMM) Store() {
 
 	fmt.Println("Saving probability distribution Pi...")
 	for i := range h.Pi {
-		connection.Do("LPUSH", DBPI, h.Pi[i])
+		connection.Do("RPUSH", DBPI, h.Pi[i])
 		// fmt.Println("LPUSH", DBPI, h.Pi[i])
 	}
 
@@ -572,7 +577,7 @@ func Load() HiddenMM {
 }
 
 
-func Educate(full_dir, summ_dir string) {
+func Educate(full_dir, summ_dir string, iterations int, tolerance float64) {
 	dir, err := os.Open(full_dir)
 
 	if err != nil {
@@ -605,7 +610,7 @@ func Educate(full_dir, summ_dir string) {
 	}
 
 	fmt.Println("Begin learning...")
-	hmm.Learn(observed_sequence, 0, 0.01)
+	hmm.Learn(observed_sequence, iterations, tolerance)
 	
 	fmt.Println("Saving model in database...")
 	hmm.Store()
