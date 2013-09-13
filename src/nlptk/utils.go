@@ -14,7 +14,7 @@ type Texter interface {
 	GetParts() []string
 	// Checks if text attribute contains string
 	IsIn(str string) bool 
-	CreateBigrams () [][2]string
+	CreateBigrams () [][]string
 }
 
 type Paragraph struct {
