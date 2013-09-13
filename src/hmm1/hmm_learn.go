@@ -89,6 +89,47 @@ func ObserveFile(filename, full_dir, summ_dir string) []int {
 }
 
 
+// Evaluates summarization - return % of sentences in human-created summarization
+// which appeared in program-created one
+func EvaluateSummary(filename, human_summ_dir, auto_summ_dir string) float64 {
+
+	human, err := os.Open(human_summ_dir + filename)
+
+	if err != nil {
+		fmt.Println("Error reading file", human_summ_dir + filename)
+		os.Exit(1)
+	}
+
+	auto, err := os.Open(auto_summ_dir + filename)
+
+	if err != nil {
+		fmt.Println("Error reading file", auto_summ_dir + filename)
+		os.Exit(1)
+	}
+
+	coverage := 0
+
+	reader_human := bufio.NewReader(human)
+	
+	hpar, _ := reader_human.ReadBytes('\n')
+	human_summarization := nlptk.Paragraph{0, string(hpar)}
+
+	reader_auto := bufio.NewReader(auto)
+	
+	apar, _ := reader_auto.ReadBytes('\n')
+	auto_summarization := nlptk.Paragraph{0, string(apar)}
+
+
+	for _, sentence := range human_summarization.GetParts() {
+		if auto_summarization.IsIn(sentence) {
+			coverage++
+		}
+	}
+
+	return float64(coverage) / float64(len(auto.GetParts()))
+}
+
+
 type HiddenMM struct {
 	// number of states
 	N int
@@ -434,11 +475,8 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 	}
 
 	//Init
-	// fmt.Println("PI", h.Pi)
-
 	for i := 0; i < h.N; i++ {
 		a[i][0] = (-1.0 * math.Log(h.Pi[i])) - math.Log(h.B[i][observation[0]])
-		// fmt.Println(a[i], h.Pi[i], h.B[i][observation[0]])
 	}
 
 	//Induction
@@ -459,18 +497,18 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 		}
 	}
 
-	// Min for the last element of observation
-	min_state = 0
-	min_weight = a[0][T - 1]
+// Min for the last element of observation
+min_state = 0
+min_weight = a[0][T - 1]
 
-	for i := 1; i < h.N; i++ {
-		if a[i][T - 1] < min_weight {
-			min_state = i
-			min_weight = a[i][T - 1]
-		}
+for i := 1; i < h.N; i++ {
+	if a[i][T - 1] < min_weight {
+		min_state = i
+		min_weight = a[i][T - 1]
 	}
+}
 
-	//Traceback
+		//Traceback
 	path := make([]int, T)
 	path[T - 1] = min_state
 
@@ -497,7 +535,6 @@ func (h *HiddenMM) Store() {
 	for i := range h.A {
 		for j := range h.A[i] {
 			connection.Send("RPUSH", DBA + Int2Str(i), h.A[i][j])
-			// fmt.Println("LPUSH", DBA + Int2Str(i), h.A[i][j])
 		}
 	}
 	connection.Do("EXEC")
