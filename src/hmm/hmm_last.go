@@ -1,97 +1,20 @@
-// For optimising runtime
-// Assuming only two possible transitions for each states
-// 1 - summary, 2 - non-summary
-
-// learning tools for HMM parameters
+// Hidden Markov Model toolkit
 package hmm
 
 import (
 	"fmt"
 	"math"
-	"bufio"
 	"os"
-	"strings"
 	"strconv"
-	"nlptk"
 	"dbconn"
 	"redis/redis"
 )
 
 const (
-	FULL = "/home/maxabsent/Documents/learning_set/full_texts/"
-	SUMM = "/home/maxabsent/Documents/learning_set/summarizations/"
-	
 	DBA = "@@#"
 	DBB = "@#@"
 	DBPI = "@@@"
-	
-	// DICTPREFIX = "#"
-	
-	NSTATES = 300
-	NVALS = 300
 )
-
-
-// Analyze full text and summarization to prepare observations:
-//	- vectors of features
-//	- binary table of sentence in summarization presence
-func ObserveFile(filename string) ([][]float64, []int) {
-
-	full, err := os.Open(FULL + filename)
-
-	if err != nil {
-		fmt.Println("Error reading file", FULL + filename)
-		os.Exit(1)
-	}
-
-	summ, err := os.Open(SUMM + filename)
-
-	if err != nil {
-		fmt.Println("Error reading file", SUMM + filename)
-		os.Exit(1)
-	}
-
-	observations := make([][]float64, NSTATES, NSTATES)
-	sentence_counter := make([]int, 0, 0)
-	sentence_number := 0
-	paragraph_number := 0
-
-	reader_summ := bufio.NewReader(summ)
-	spar, _ := reader_summ.ReadBytes('\n')
-	summarization := nlptk.Paragraph{paragraph_number, string(spar)}
-	sum_sentences := summarization.Text
-
-	reader_full := bufio.NewReader(full)
-	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
-		paragraph := nlptk.Paragraph{paragraph_number, string(bpar)}
-		sentences := paragraph.GetParts()
-
-		if len(sentences) == 0 {
-			continue
-		}
-
-		for _, s := range sentences {
-			observations[sentence_number] = make([]float64, 4, 4)
-			// observations[sentence_number] = float64(i)  // ComputeFeatures(nlptk.Sentence{i, s}, nlptk.WordCount(FULL + filename))
-
-			if strings.Contains(sum_sentences, s) {
-				sentence_counter = append(sentence_counter, 2 * sentence_number + 1)
-			} else {
-				sentence_counter = append(sentence_counter, 2 * sentence_number)
-			}
-			sentence_number++
-
-			// safety switch
-			if sentence_number == NSTATES {
-				return observations, sentence_counter
-			}
-		}
-	}
-
-	fmt.Println("sequence", filename, len(sentence_counter), sentence_counter)
-
-	return observations, sentence_counter
-}
 
 
 type HiddenMM struct {
@@ -194,10 +117,8 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 				p := h.A[j][i] * h.B[i][observation[t]]
 				fwd[t][i] += fwd[t - 1][j] * p
 			}
-
 			c[t] += fwd[t][i]  // likelihood
 		}
-
 		// scaling
 		if c[t] != 0 {
 			for i := 0; i < h.N; i++ {
@@ -205,7 +126,6 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 			}
 		}
 	}
-
 	return fwd
 }
 
@@ -266,7 +186,6 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 			}
 		}
 	}
-
 	// initial log-likelihood
 	old_likelihood := math.SmallestNonzeroFloat64
 	new_likelihood := float64(0)
@@ -294,7 +213,6 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 					gamma[i][j][k] = fwd[j][k] * bwd[j][k]
 					s += gamma[i][j][k]
 				}
-
 				// scaling
 				if s != 0 {
 					for k := 0; k < h.N; k++ {
@@ -313,7 +231,6 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 						s += epsilon[i][j][k][l]
 					}
 				}
-
 				if s != 0 {
 					for k := 0; k < h.N; k++ {
 						for l := 0; l < h.N; l++ {
@@ -349,7 +266,6 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 				}
 				h.Pi[k] = sum / float64(len(observations))
 			}
-
 			// transition probabilities
 			for i := 0; i < h.N; i++ {
 				for j := 0; j < h.N; j++ {
@@ -364,7 +280,6 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 							den += gamma[k][l][i]
 						}
 					}
-
 					if den == 0.0 {
 						h.A[i][j] = 0.0
 					} else {
@@ -387,7 +302,6 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 							den += gamma[k][l][i]
 						}
 					}
-
 					if num == 0.0 {
 						h.B[i][j] = 1e-10
 					} else {
@@ -402,30 +316,13 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 }
 
 
-func (h *HiddenMM) Evaluate(observation []int, logarithm bool) float64 {
-    // Forward algorithm
-    likelihood := float64(0);
-    coefficients := make([]float64, len(observation))
-
-    // Compute forward probabilities
-    h.Forward(observation, coefficients)
-
-    for _, v := range coefficients {
-    	likelihood += math.Log(v);
-    }
-    // Return the sequence probability
-    if logarithm {
-    	return likelihood
-    }
-    return math.Exp(likelihood)
-}
-
-
+// Decode hidden states
 func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 	
 	T := len(observation)
 	min_state := 0
 	min_weight := 0.0
+	weight := 0.0
 
 	s := make([][]int, h.N)
 	for i := range s {
@@ -441,19 +338,21 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 	for i := 0; i < h.N; i++ {
 		a[i][0] = (-1.0 * math.Log(h.Pi[i])) - math.Log(h.B[i][observation[0]])
 	}
+
 	//Induction
-	for t := range observation {
+	for t := 1; t < T; t++ {
 		for j := 0; j < h.N; j++ {
 			min_state = 0
 			min_weight = a[0][t - 1] - math.Log(h.A[0][j])
 
 			for i := 0; i < h.N; i++ {
-				weigth := a[i][t - 1] - math.Log(h.A[i][j])
+				weight = a[i][t - 1] - math.Log(h.A[i][j])
 
-				if weigth < min_weight {
-					min_state, min_weight = i, weigth
+				if weight < min_weight {
+					min_state, min_weight = i, weight
 				}
 			}
+			// fmt.Println(j, t, observation[t])
 			a[j][t] = min_weight - math.Log(h.B[j][observation[t]])
 			s[j][t] = min_state
 		}
@@ -483,6 +382,25 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 }
 
 
+func (h *HiddenMM) Evaluate(observation []int, logarithm bool) float64 {
+    // Forward algorithm
+    likelihood := float64(0);
+    coefficients := make([]float64, len(observation))
+
+    // Compute forward probabilities
+    h.Forward(observation, coefficients)
+
+    for _, v := range coefficients {
+    	likelihood += math.Log(v);
+    }
+    // Return the sequence probability
+    if logarithm {
+    	return likelihood
+    }
+    return math.Exp(likelihood)
+}
+
+
 func Int2Str(i int) string {
 	return strconv.FormatInt(int64(i), 10)
 }
@@ -496,8 +414,7 @@ func (h *HiddenMM) Store() {
 	connection.Send("MULTI")
 	for i := range h.A {
 		for j := range h.A[i] {
-			connection.Send("LPUSH", DBA + Int2Str(i), h.A[i][j])
-			fmt.Println("LPUSH", DBA + Int2Str(i), h.A[i][j])
+			connection.Send("RPUSH", DBA + Int2Str(i), h.A[i][j])
 		}
 	}
 	connection.Do("EXEC")
@@ -506,27 +423,27 @@ func (h *HiddenMM) Store() {
 	connection.Send("MULTI")
 	for i := range h.B {
 		for j := range h.B[i] {
-			connection.Send("LPUSH", DBB + Int2Str(i), h.B[i][j])
-			fmt.Println("LPUSH", DBB + Int2Str(i), h.B[i][j])
+			connection.Send("RPUSH", DBB + Int2Str(i), h.B[i][j])
+			// fmt.Println("LPUSH", DBB + Int2Str(i), h.B[i][j])
 		}
 	}
 	connection.Do("EXEC")
 
 	fmt.Println("Saving probability distribution Pi...")
 	for i := range h.Pi {
-		connection.Do("LPUSH", DBPI, h.Pi[i])
-		fmt.Println("LPUSH", DBPI, h.Pi[i])
+		connection.Do("RPUSH", DBPI, h.Pi[i])
+		// fmt.Println("LPUSH", DBPI, h.Pi[i])
 	}
 
 	connection.Close()
 }
 
 
-func Load() HiddenMM {
+func Load(N, M int) HiddenMM {
 	pool := dbconn.Pool
 	connection := pool.Get()
 
-	A := make([][]float64, NSTATES, NSTATES)
+	A := make([][]float64, N, N)
 
 	for i := range A {
 		loadedA, err := redis.Values(connection.Do("LRANGE", DBA + Int2Str(i), 0, -1))
@@ -535,15 +452,14 @@ func Load() HiddenMM {
 			fmt.Println("Error while reading A[", i, "]")
 			os.Exit(1)
 		}
-		A[i] = make([]float64, NSTATES, NSTATES)
+		A[i] = make([]float64, N, N)
 		
 		for j := range A[i] {
-			// fmt.Println("A", len(A), len(A[i]), j, len(loadedA))
 			A[i][j], _ = redis.Float64(loadedA[j], err)
 		}
 	}
 
-	B := make([][]float64, NSTATES, NSTATES)
+	B := make([][]float64, N, N)
 
 	for i := range B {
 		loadedB, err := redis.Values(connection.Do("LRANGE", DBB + Int2Str(i), 0, -1))
@@ -552,10 +468,9 @@ func Load() HiddenMM {
 			fmt.Println("Error while reading B[", i, "]")
 			os.Exit(1)
 		}
-		B[i] = make([]float64, NVALS, NVALS)
+		B[i] = make([]float64, M, M)
 
 		for j := range B[i] {
-			// fmt.Println("B", len(B), len(B[i]), j, len(loadedB))
 			B[i][j], _ = redis.Float64(loadedB[j], err)
 		}
 	}
@@ -566,7 +481,7 @@ func Load() HiddenMM {
 		fmt.Println("Error while reading Pi")
 		os.Exit(1)
 	}
-	Pi := make([]float64, NSTATES, NSTATES)
+	Pi := make([]float64, N, N)
 
 	for i := range Pi {
 		Pi[i], _ = redis.Float64(loadedPi[i], err)
@@ -574,47 +489,5 @@ func Load() HiddenMM {
 
 	connection.Close()
 
-	return HiddenMM{NSTATES, NVALS, A, B, Pi}
-}
-
-
-func Educate() {
-	dir, err := os.Open(FULL)
-
-	if err != nil {
-		fmt.Println("Error reading directory", FULL)
-		os.Exit(1)
-	}
-
-	// select all filenames from open directory
-	files_slice, err := dir.Readdirnames(0)
-
-	if err != nil {
-		fmt.Println("Error reading filenames from directory", FULL)
-		os.Exit(1)
-	}	
-
-	err = dir.Close()
-
-	if err != nil {
-		fmt.Println("Error closing directory", FULL)
-		os.Exit(1)
-	}
-	hmm := InitHMM(NSTATES, NVALS)
-
-	observed_sequence := make([][]int, len(files_slice))
-
-	for i, f := range files_slice {
-		fmt.Println("Processing", f, "file")
-		// learn only sequences for now
-		_, observed_sequence[i] = ObserveFile(f)
-	}
-
-	fmt.Println("Begin learning...")
-	hmm.Learn(observed_sequence, 0, 0.01)
-	
-	fmt.Println("Saving model in database...")
-	hmm.Store()
-
-	fmt.Println("Learning succeed!")
+	return HiddenMM{N, M, A, B, Pi}
 }
