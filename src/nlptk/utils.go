@@ -22,7 +22,7 @@ type Paragraph struct {
 	Text string
 }
 
-func (p *Paragraph) GetParts () []string {
+func (p *Paragraph) GetParts() []string {
 	// Extracts slice of pure sentences from paragraph
 	splitted := make([]string, 0, 0)
 
@@ -40,7 +40,7 @@ func (p *Paragraph) GetParts () []string {
 	return splitted
 }
 
-func (p *Paragraph) IsIn (str string) bool {
+func (p *Paragraph) IsIn(str string) bool {
 	// Checks if paragraph contains string
 	if strings.Count(p.Text, str) != 0 {
 		return true
@@ -53,18 +53,18 @@ type Sentence struct {
 	Text string
 }
 
-func (s *Sentence) GetParts () []string {
+func (s *Sentence) GetParts() []string {
 	return strings.Fields(s.Text)
 }
 
-func (s *Sentence) IsIn (str string) bool {
+func (s *Sentence) IsIn(str string) bool {
 	if strings.Count(s.Text, str) != 0 {
 		return true
 	}
 	return false
 }
 
-func (s *Sentence) CreateBigrams () [][]string {
+func (s *Sentence) CreateBigrams() [][]string {
 	str := s.Text
 	unigrams := strings.Fields(str)
 	
