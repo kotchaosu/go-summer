@@ -12,8 +12,9 @@ Main resource of code:
 
 Differences in my approach:
 	0. Multiple features for emissions.
-	1. Using concurrency for better performance.
+	1. Modified forward/backward/Viterbi for using "silent" states.
 	2. Integration with Redis DB (saving and loading model parameters).
+	3. Using concurrency for better performance (TODO).
 
 Basic usage:
 	> TODO
