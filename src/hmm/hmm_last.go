@@ -114,7 +114,14 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 	for t := 1; t < len(observation); t++ {
 		for i := 0; i < h.N; i++ {
 			for j := 0; j < h.N; j++ {
-				p := h.A[j][i] * h.B[i][observation[t]]
+				// check if state is silent
+				// silent states don't emit symbol => 0
+				p := 0.0
+				if observation[t] != 0 {
+					p = h.A[j][i] * h.B[i][observation[t]]
+				} else {
+					p = h.A[j][i]
+				}
 				fwd[t][i] += fwd[t - 1][j] * p
 			}
 			c[t] += fwd[t][i]  // likelihood
@@ -151,8 +158,15 @@ func (h *HiddenMM) Backward(observation []int, c []float64) [][]float64 {
 	for t := T - 2; t >= 0; t-- {
 		for i := 0; i < h.N; i++ {
 			sum := 0.0
+			p := 0.0
 			for j := 0; j < h.N; j++ {
-				sum += h.A[i][j] * h.B[j][observation[t + 1]] * bwd[t + 1][j]
+				// check if state is silent
+				if observation[t + 1] != 0 {
+					p = h.A[i][j] * h.B[j][observation[t + 1]] * bwd[t + 1][j]
+				} else {
+					p = h.A[i][j] * bwd[t + 1][j]
+				}
+				sum += p
 			}
 			bwd[t][i] = bwd[t][i] + sum / c[t]
 		}
@@ -227,7 +241,13 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 
 				for k := 0; k < h.N; k++ {
 					for l := 0; l < h.N; l++ {
-						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * h.B[l][observations[i][j + 1]]
+
+						// silent state
+						if observations[i][j + 1] == 0 {
+							epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l]
+						} else {
+							epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * h.B[l][observations[i][j + 1]]
+						}
 						s += epsilon[i][j][k][l]
 					}
 				}
