@@ -20,10 +20,10 @@ const(
 	AEVAL = "/home/maxabsent/Documents/learning_set/evaluation/auto/1/"
 	FILENAME = "text_0"
 
-	FEATURE = 1
+	FEATURE = 0
 
 	N = 200
-	M = 100
+	M = 10
 	// <<<
 )
 
@@ -98,7 +98,8 @@ func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int
 	reader_full := GetReader(full_dir + filename)
 	reader_summ := GetReader(summ_dir + filename)
 
-	sentence_counter := make([]int, states, states)
+	sentence_counter := make([]int, 0, 0)
+	// sentence_counter := make([]int, states, states)
 	sentence_number, paragraph_number := 0, 0
 
 	spar, _ := reader_summ.ReadBytes('\n')
@@ -117,12 +118,16 @@ func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int
 		if feature == 0 {
 			for i, s := range sentences {
 				if strings.Contains(sum_sentences, s[:len(s)-1]) {
-					sentence_counter[2 * sentence_number + 1] = i + 1
+					sentence_counter = append(sentence_counter, i + 1)
+					// sentence_counter[2 * sentence_number + 1] = i + 1
+					// sentence_counter = append(sentence_counter, i + 1)
 					// sentence_counter[2 * sentence_number] = 0
 				} else {
+					sentence_counter = append(sentence_counter, 0)
 					// sentence_counter[2 * sentence_number + 1] = 0
 					// sentence_counter[2 * sentence_number] = i + 1
-					sentence_counter[2 * sentence_number] = 0
+					// sentence_counter = append(sentence_counter, 0)
+					// sentence_counter[2 * sentence_number] = 0
 
 				}
 				if sentence_number++; 2 * sentence_number >= N {
@@ -133,18 +138,51 @@ func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int
 			for _, s := range sentences {
 				sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
 				if strings.Contains(sum_sentences, s[:len(s)-1]) {
-					sentence_counter[2 * sentence_number + 1] = len(sentence.GetParts())
+					sentence_counter = append(sentence_counter, len(sentence.GetParts()))
+					// sentence_counter[2 * sentence_number + 1] = len(sentence.GetParts())
 					// sentence_counter[2 * sentence_number] = 0
 				} else {
+					sentence_counter = append(sentence_counter, 0)
 					// sentence_counter[2 * sentence_number + 1] = 0
 					// sentence_counter[2 * sentence_number] = len(sentence.GetParts())
-					sentence_counter[2 * sentence_number] = 0
+					// sentence_counter[2 * sentence_number] = 0
 				}
 				if sentence_number++; 2 * sentence_number >= N {
 					return sentence_counter
 				}
 			}
 		}
+		// if feature == 0 {
+		// 	for i, s := range sentences {
+		// 		if strings.Contains(sum_sentences, s[:len(s)-1]) {
+		// 			sentence_counter[2 * sentence_number + 1] = i + 1
+		// 			// sentence_counter[2 * sentence_number] = 0
+		// 		} else {
+		// 			// sentence_counter[2 * sentence_number + 1] = 0
+		// 			// sentence_counter[2 * sentence_number] = i + 1
+		// 			sentence_counter[2 * sentence_number] = 0
+
+		// 		}
+		// 		if sentence_number++; 2 * sentence_number >= N {
+		// 			return sentence_counter
+		// 		}
+		// 	}
+		// } else {
+		// 	for _, s := range sentences {
+		// 		sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
+		// 		if strings.Contains(sum_sentences, s[:len(s)-1]) {
+		// 			sentence_counter[2 * sentence_number + 1] = len(sentence.GetParts())
+		// 			// sentence_counter[2 * sentence_number] = 0
+		// 		} else {
+		// 			// sentence_counter[2 * sentence_number + 1] = 0
+		// 			// sentence_counter[2 * sentence_number] = len(sentence.GetParts())
+		// 			sentence_counter[2 * sentence_number] = 0
+		// 		}
+		// 		if sentence_number++; 2 * sentence_number >= N {
+		// 			return sentence_counter
+		// 		}
+		// 	}
+		// }
 		paragraph_number++
 	}
 	fmt.Println("sequence", filename, len(sentence_counter), sentence_counter)
@@ -173,13 +211,13 @@ func CreateObservationSequence(filename string, states, feature int) []int {
 
 		if feature == 0 {
 			for i := range sentences {
-				output = append(output, 0)
+				// output = append(output, 0)
 				output = append(output, i + 1)
 			}
 		} else {
 			for _, s := range sentences {
 				sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
-				output = append(output, 0)
+				// output = append(output, 0)
 				output = append(output, len(sentence.GetParts()))
 			}
 		}
@@ -349,7 +387,7 @@ func Educate(full_dir, summ_dir string, N, M, feature, iterations int, tolerance
 
 
 func main() {
-	// Educate(FULL, SUMM, N, M, FEATURE, 8, 0.01)
+	Educate(FULL, SUMM, N, M, FEATURE, 8, 0.01)
 	// read model from db
 	markovmodel := hmm.Load(N, M)
 	likelihood := 0.0
