@@ -14,11 +14,11 @@ const(
 	// >>> TODO: all of these should be parameters main()
 	FULL = "/home/maxabsent/Documents/learning_set/full_texts/"
 	SUMM = "/home/maxabsent/Documents/learning_set/summarizations/"
-	FILE = "/home/maxabsent/Documents/learning_set/evaluation/text_0"
+	FILE = "/home/maxabsent/Documents/learning_set/evaluation/text_1"
 
 	HEVAL = "/home/maxabsent/Documents/learning_set/evaluation/human/"
-	AEVAL = "/home/maxabsent/Documents/learning_set/evaluation/auto/1/"
-	FILENAME = "text_0"
+	AEVAL = "/home/maxabsent/Documents/learning_set/evaluation/auto/0/"
+	FILENAME = "text_1"
 
 	FEATURE = 0
 
@@ -57,14 +57,7 @@ func GetWriter(filename string) *bufio.Writer {
             panic(err)
         }
 	}()
-	// 	err = file.Close()
-	// 	if err != nil {
-	// 		fmt.Println("Fuck up, chief", filename)
-	// 	} else {
-	// 		fmt.Println("Error creating file", filename)
-	// 	}
-	// 	os.Exit(1)
-	// }
+
 	return bufio.NewWriter(file)
 }
 
@@ -99,7 +92,6 @@ func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int
 	reader_summ := GetReader(summ_dir + filename)
 
 	sentence_counter := make([]int, 0, 0)
-	// sentence_counter := make([]int, states, states)
 	sentence_number, paragraph_number := 0, 0
 
 	spar, _ := reader_summ.ReadBytes('\n')
@@ -109,7 +101,7 @@ func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int
 	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
 
 		var sentences []string
-		paragraph := nlptk.Paragraph{paragraph_number, string(bpar)}
+		paragraph := nlptk.Paragraph{paragraph_number, string(bpar[:len(bpar)-1])}
 
 		if sentences = paragraph.GetParts(); len(paragraph.Text) <= 1 || len(sentences) == 0 {
 			continue
@@ -119,16 +111,8 @@ func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int
 			for i, s := range sentences {
 				if strings.Contains(sum_sentences, s[:len(s)-1]) {
 					sentence_counter = append(sentence_counter, i + 1)
-					// sentence_counter[2 * sentence_number + 1] = i + 1
-					// sentence_counter = append(sentence_counter, i + 1)
-					// sentence_counter[2 * sentence_number] = 0
 				} else {
 					sentence_counter = append(sentence_counter, 0)
-					// sentence_counter[2 * sentence_number + 1] = 0
-					// sentence_counter[2 * sentence_number] = i + 1
-					// sentence_counter = append(sentence_counter, 0)
-					// sentence_counter[2 * sentence_number] = 0
-
 				}
 				if sentence_number++; 2 * sentence_number >= N {
 					return sentence_counter
@@ -136,53 +120,19 @@ func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int
 			}
 		} else {
 			for _, s := range sentences {
+				
 				sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
+
 				if strings.Contains(sum_sentences, s[:len(s)-1]) {
 					sentence_counter = append(sentence_counter, len(sentence.GetParts()))
-					// sentence_counter[2 * sentence_number + 1] = len(sentence.GetParts())
-					// sentence_counter[2 * sentence_number] = 0
 				} else {
 					sentence_counter = append(sentence_counter, 0)
-					// sentence_counter[2 * sentence_number + 1] = 0
-					// sentence_counter[2 * sentence_number] = len(sentence.GetParts())
-					// sentence_counter[2 * sentence_number] = 0
 				}
 				if sentence_number++; 2 * sentence_number >= N {
 					return sentence_counter
 				}
 			}
 		}
-		// if feature == 0 {
-		// 	for i, s := range sentences {
-		// 		if strings.Contains(sum_sentences, s[:len(s)-1]) {
-		// 			sentence_counter[2 * sentence_number + 1] = i + 1
-		// 			// sentence_counter[2 * sentence_number] = 0
-		// 		} else {
-		// 			// sentence_counter[2 * sentence_number + 1] = 0
-		// 			// sentence_counter[2 * sentence_number] = i + 1
-		// 			sentence_counter[2 * sentence_number] = 0
-
-		// 		}
-		// 		if sentence_number++; 2 * sentence_number >= N {
-		// 			return sentence_counter
-		// 		}
-		// 	}
-		// } else {
-		// 	for _, s := range sentences {
-		// 		sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
-		// 		if strings.Contains(sum_sentences, s[:len(s)-1]) {
-		// 			sentence_counter[2 * sentence_number + 1] = len(sentence.GetParts())
-		// 			// sentence_counter[2 * sentence_number] = 0
-		// 		} else {
-		// 			// sentence_counter[2 * sentence_number + 1] = 0
-		// 			// sentence_counter[2 * sentence_number] = len(sentence.GetParts())
-		// 			sentence_counter[2 * sentence_number] = 0
-		// 		}
-		// 		if sentence_number++; 2 * sentence_number >= N {
-		// 			return sentence_counter
-		// 		}
-		// 	}
-		// }
 		paragraph_number++
 	}
 	fmt.Println("sequence", filename, len(sentence_counter), sentence_counter)
@@ -203,7 +153,7 @@ func CreateObservationSequence(filename string, states, feature int) []int {
 	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
 		
 		var sentences []string
-		paragraph := nlptk.Paragraph{0, string(bpar)}
+		paragraph := nlptk.Paragraph{0, string(bpar[:len(bpar)-1])}
 
 		if sentences = paragraph.GetParts(); len(paragraph.Text) <= 1 || len(sentences) == 0 {
 			continue
@@ -211,13 +161,11 @@ func CreateObservationSequence(filename string, states, feature int) []int {
 
 		if feature == 0 {
 			for i := range sentences {
-				// output = append(output, 0)
 				output = append(output, i + 1)
 			}
 		} else {
 			for _, s := range sentences {
 				sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
-				// output = append(output, 0)
 				output = append(output, len(sentence.GetParts()))
 			}
 		}
@@ -230,40 +178,6 @@ func CreateObservationSequence(filename string, states, feature int) []int {
 	return output
 }
 
-// 	output := make([]int, states, states)
-// 	sentence_number := 0
-
-// 	reader_full := GetReader(filename)
-
-// 	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
-		
-// 		var sentences []string
-// 		paragraph := nlptk.Paragraph{0, string(bpar)}
-
-// 		if sentences = paragraph.GetParts(); len(paragraph.Text) <= 1 || len(sentences) == 0 {
-// 			continue
-// 		}
-
-// 		if feature == 0 {
-// 			for i := range sentences {
-// 				output[2 * sentence_number] = 0
-// 				output[2 * sentence_number + 1] = i + 1
-// 			}
-// 		} else {
-// 			for _, s := range sentences {
-// 				sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
-// 				output[2 * sentence_number] = 0
-// 				output[2 * sentence_number + 1] = len(sentence.GetParts())
-// 			}
-// 		}
-
-// 		if sentence_number++; 2 * sentence_number >= states {
-// 			break
-// 		}
-// 	}
-// 	fmt.Println("Created sequence:", output)
-// 	return output
-// }
 
 // Prints sequence of states (appear, not appear) given by slice 
 func PrintSequence(filename string, sequence []int) string {
@@ -277,7 +191,8 @@ func PrintSequence(filename string, sequence []int) string {
     buf := make([]byte, 1024)
 
 	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
-		paragraph := nlptk.Paragraph{0, string(bpar)}
+
+		paragraph := nlptk.Paragraph{0, string(bpar[:len(bpar)-1])}
 		var sentences []string
 
 		if len(paragraph.Text) <= 1 {
@@ -315,10 +230,10 @@ func EvaluateSummary(filename, human_summ_dir, auto_summ_dir string) (float64, f
 	reader_auto := GetReader(auto_summ_dir + filename)
 
 	hpar, _ := reader_human.ReadBytes('\n')
-	human_summarization := nlptk.Paragraph{0, string(hpar)}
-	
+	human_summarization := nlptk.Paragraph{0, string(hpar[:len(hpar)-1])}
+
 	apar, _ := reader_auto.ReadBytes('\n')
-	auto_summarization := nlptk.Paragraph{0, string(apar)}
+	auto_summarization := nlptk.Paragraph{0, string(apar[:len(apar)-1])}
 
 	match_auto := 0
 	all_auto := 0
@@ -387,7 +302,7 @@ func Educate(full_dir, summ_dir string, N, M, feature, iterations int, tolerance
 
 
 func main() {
-	Educate(FULL, SUMM, N, M, FEATURE, 8, 0.01)
+	// Educate(FULL, SUMM, N, M, FEATURE, 8, 0.01)
 	// read model from db
 	markovmodel := hmm.Load(N, M)
 	likelihood := 0.0
