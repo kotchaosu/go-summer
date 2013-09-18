@@ -1,5 +1,5 @@
 // Hidden Markov Model toolkit
-package hmm
+package hmm2
 
 import (
 	"fmt"
@@ -24,8 +24,8 @@ type HiddenMM struct {
 	M int
 	// transition probabilities N x N
 	A [][]float64
-	// emission probabilities N x M
-	B [][]float64
+	// emission probabilities N x M0 x M1
+	B [][][]float64
 	// initial probability distribution vector
 	Pi []float64
 }
@@ -46,16 +46,20 @@ func InitHMM(N, M int) HiddenMM {
 		}
 	}
 
-	B := make([][]float64, N, N)
+	B := make([][][]float64, N, N)
 	for i := range B {
-		B[i] = make([]float64, M, M)
+		B[i] = make([][]float64, M0, M0)
 
 		for j := range B[i] {
-			B[i][j] = 1.0 / float64(M)
+			B[i][j] = make([]float64, M1, M1)
+
+			for k := range B[i][j] {
+				B[i][j][k] = 1.0 / float64(M0 * M1)
+			}
 		}
 	}
 
-	return HiddenMM{N, M, A, B, Pi}
+	return HiddenMM{N, M0, M1, A, B, Pi}
 }
 
 
@@ -87,8 +91,7 @@ func CheckConvergence(old_likelihood float64, new_likelihood float64, current_it
 // Kalman filter
 // Calculate probability of generated sequence
 // http://en.wikipedia.org/wiki/Forward_algorithm
-// func (* HiddenMM) Forward(observations [][]float64, c []float64) [][]float64 {
-func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
+func (h *HiddenMM) Forward(observation [][]int, c []float64) [][]float64 {
 	fwd := make([][]float64, len(observation))
 
 	for i := range fwd {
@@ -98,8 +101,8 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 	// STEP 1
 	// init
 	for i := 0; i < h.N; i++ {
-		if i % 2 != 0 {
-			fwd[0][i] = h.Pi[i] * h.B[i][observation[0]]
+		if observation[0] != 0 {
+			fwd[0][i] = h.Pi[i] * h.B[i][observation[0][0]][observation[0][1]]
 		} else {
 			fwd[0][i] = h.Pi[i]
 		}
@@ -118,12 +121,13 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 	for t := 1; t < len(observation); t++ {
 		for i := 0; i < h.N; i++ {
 			for j := 0; j < h.N; j++ {
+
+				p := 0.0
 				// check if state is silent
-				// silent states don't emit symbol => 0
-				if i % 2 != 0 {
-					p := h.A[j][i] * h.B[i][observation[t]]
+				if observation[t][0] * observation[t][1] != 0 {
+					p = h.A[j][i] * h.B[i][observation[t][0]][observation[t][1]]
 				} else {
-					p := h.A[j][i]
+					p = h.A[j][i]
 				}
 				fwd[t][i] += fwd[t - 1][j] * p
 			}
@@ -142,8 +146,7 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 
 // Kalman smoothing
 // Backward variables - use the same 'forward' scaling factor
-// func (* HiddenMM) Backward(observations []float64, c []float64) [][]float64 {
-func (h *HiddenMM) Backward(observation []int, c []float64) [][]float64 {
+func (h *HiddenMM) Backward(observation [][]int, c []float64) [][]float64 {
 	T := len(observation)
 	bwd := make([][]float64, T)
 
@@ -162,7 +165,15 @@ func (h *HiddenMM) Backward(observation []int, c []float64) [][]float64 {
 		for i := 0; i < h.N; i++ {
 			sum := 0.0
 			for j := 0; j < h.N; j++ {
-				sum += h.A[i][j] * h.B[j][observation[t + 1]] * bwd[t + 1][j]
+				
+				p := 0.0
+				// check if state is silent
+				if observation[t + 1][0] * observation[t + 1][1] != 0 {
+					p = h.B[j][observation[t + 1][0]][observation[t + 1][1]]
+				} else {
+					p = 1.0
+				}
+				sum += h.A[i][j] * p * bwd[t + 1][j]
 			}
 			bwd[t][i] = bwd[t][i] + sum / c[t]
 		}
@@ -172,7 +183,7 @@ func (h *HiddenMM) Backward(observation []int, c []float64) [][]float64 {
 
 
 // main algorithm for learning HMM parameters from given observations
-func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64) float64 {
+func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float64) float64 {
 	if tolerance + float64(iterations) == 0.0 {
 		return 0.0
 	}
@@ -237,7 +248,15 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 
 				for k := 0; k < h.N; k++ {
 					for l := 0; l < h.N; l++ {
-						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * h.B[l][observations[i][j + 1]]
+
+						p := 0.0
+						// silent state
+						if observations[i][j + 1][0] * observations[i][j + 1][1] != 0 {
+							p = h.B[l][observations[i][j + 1][0]][observations[i][j + 1][1]]
+						} else {
+							p = 1.0
+						}
+						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * p
 						s += epsilon[i][j][k][l]
 					}
 				}
@@ -301,21 +320,23 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 			// emission probabilities
 			for i := 0; i < h.N; i++ {
 				for j := 0; j < h.M; j++ {
-					den, num := 0.0, 0.0
-					for k := range observations {
-						for l := range observations[k] {
-							if observations[k][l] == j {
-								num += gamma[k][l][i]
+					if i % 2 != 0 {
+						den, num := 0.0, 0.0
+						for k := range observations {
+							for l := range observations[k] {
+								if observations[k][l] == j {
+									num += gamma[k][l][i]
+								}
+							}
+							for l := range observations[k] {
+								den += gamma[k][l][i]
 							}
 						}
-						for l := range observations[k] {
-							den += gamma[k][l][i]
+						if num == 0.0 {
+							h.B[i][j] = 1e-10
+						} else {
+							h.B[i][j] = num / den
 						}
-					}
-					if num == 0.0 {
-						h.B[i][j] = 1e-10
-					} else {
-						h.B[i][j] = num / den
 					}
 				}
 			}
@@ -327,7 +348,7 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 
 
 // Decode hidden states
-func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
+func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 	
 	T := len(observation)
 	min_state := 0
@@ -346,7 +367,13 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 
 	//Init
 	for i := 0; i < h.N; i++ {
-		a[i][0] = (-1.0 * math.Log(h.Pi[i])) - math.Log(h.B[i][observation[0]])
+		p := 0.0
+
+		if observation[0][0] * observation[0][1] != 0 {
+			p = math.Log(h.B[i][observation[0][0]][observation[0][1]])
+		}
+
+		a[i][0] = (-1.0 * math.Log(h.Pi[i])) - p
 	}
 
 	//Induction
@@ -362,8 +389,12 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 					min_state, min_weight = i, weight
 				}
 			}
-			// fmt.Println(j, t, observation[t])
-			a[j][t] = min_weight - math.Log(h.B[j][observation[t]])
+			a[j][t] = min_weight
+			
+			if observation[t][0] * observation[t][1] != 0 {
+				a[j][t] -= math.Log(h.B[j][observation[t][0]][observation[t][1]])
+			}
+
 			s[j][t] = min_state
 		}
 	}
@@ -388,11 +419,12 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 	}
 
 	*probability = math.Exp(-min_weight)
+	fmt.Println("Minimal probability", *probability)
 	return path
 }
 
 
-func (h *HiddenMM) Evaluate(observation []int, logarithm bool) float64 {
+func (h *HiddenMM) Evaluate(observation [][]int, logarithm bool) float64 {
     // Forward algorithm
     likelihood := float64(0);
     coefficients := make([]float64, len(observation))
@@ -433,8 +465,9 @@ func (h *HiddenMM) Store() {
 	connection.Send("MULTI")
 	for i := range h.B {
 		for j := range h.B[i] {
-			connection.Send("RPUSH", DBB + Int2Str(i), h.B[i][j])
-			// fmt.Println("LPUSH", DBB + Int2Str(i), h.B[i][j])
+			for k := range h.B[i][j] {
+				connection.Send("RPUSH", DBB + Int2Str(i), h.B[i][j][k])
+			}
 		}
 	}
 	connection.Do("EXEC")
@@ -442,14 +475,13 @@ func (h *HiddenMM) Store() {
 	fmt.Println("Saving probability distribution Pi...")
 	for i := range h.Pi {
 		connection.Do("RPUSH", DBPI, h.Pi[i])
-		// fmt.Println("LPUSH", DBPI, h.Pi[i])
 	}
 
 	connection.Close()
 }
 
 
-func Load(N, M int) HiddenMM {
+func Load(N, M0, M1 int) HiddenMM {
 	pool := dbconn.Pool
 	connection := pool.Get()
 
@@ -469,7 +501,7 @@ func Load(N, M int) HiddenMM {
 		}
 	}
 
-	B := make([][]float64, N, N)
+	B := make([][][]float64, N, N)
 
 	for i := range B {
 		loadedB, err := redis.Values(connection.Do("LRANGE", DBB + Int2Str(i), 0, -1))
@@ -478,10 +510,11 @@ func Load(N, M int) HiddenMM {
 			fmt.Println("Error while reading B[", i, "]")
 			os.Exit(1)
 		}
-		B[i] = make([]float64, M, M)
+		B[i] = make([][]float64, M0, M0)
 
 		for j := range B[i] {
-			B[i][j], _ = redis.Float64(loadedB[j], err)
+			B[i][j] = make([]float64, M1, M1)
+				B[i][j][k], _ = redis.Float64(loadedB[j], err)
 		}
 	}
 
@@ -499,5 +532,5 @@ func Load(N, M int) HiddenMM {
 
 	connection.Close()
 
-	return HiddenMM{N, M, A, B, Pi}
+	return HiddenMM{N, M0, M1, A, B, Pi}
 }
