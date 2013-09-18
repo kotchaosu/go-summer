@@ -98,7 +98,11 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 	// STEP 1
 	// init
 	for i := 0; i < h.N; i++ {
-		fwd[0][i] = h.Pi[i] * h.B[i][observation[0]]
+		if i % 2 != 0 {
+			fwd[0][i] = h.Pi[i] * h.B[i][observation[0]]
+		} else {
+			fwd[0][i] = h.Pi[i]
+		}
 		c[0] += fwd[0][i]
 	}
 
@@ -116,7 +120,7 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 			for j := 0; j < h.N; j++ {
 				// check if state is silent
 				// silent states don't emit symbol => 0
-				if observation[t] != 0 {
+				if i % 2 != 0 {
 					p := h.A[j][i] * h.B[i][observation[t]]
 				} else {
 					p := h.A[j][i]

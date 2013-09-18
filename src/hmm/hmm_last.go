@@ -98,7 +98,11 @@ func (h *HiddenMM) Forward(observation []int, c []float64) [][]float64 {
 	// STEP 1
 	// init
 	for i := 0; i < h.N; i++ {
-		fwd[0][i] = h.Pi[i] * h.B[i][observation[0]]
+		if observation[0] != 0 {
+			fwd[0][i] = h.Pi[i] * h.B[i][observation[0]]
+		} else {
+			fwd[0][i] = h.Pi[i]
+		}
 		c[0] += fwd[0][i]
 	}
 
@@ -311,21 +315,23 @@ func (h *HiddenMM) Learn(observations [][]int, iterations int, tolerance float64
 			// emission probabilities
 			for i := 0; i < h.N; i++ {
 				for j := 0; j < h.M; j++ {
-					den, num := 0.0, 0.0
-					for k := range observations {
-						for l := range observations[k] {
-							if observations[k][l] == j {
-								num += gamma[k][l][i]
+					if i % 2 != 0 {
+						den, num := 0.0, 0.0
+						for k := range observations {
+							for l := range observations[k] {
+								if observations[k][l] == j {
+									num += gamma[k][l][i]
+								}
+							}
+							for l := range observations[k] {
+								den += gamma[k][l][i]
 							}
 						}
-						for l := range observations[k] {
-							den += gamma[k][l][i]
+						if num == 0.0 {
+							h.B[i][j] = 1e-10
+						} else {
+							h.B[i][j] = num / den
 						}
-					}
-					if num == 0.0 {
-						h.B[i][j] = 1e-10
-					} else {
-						h.B[i][j] = num / den
 					}
 				}
 			}
@@ -356,7 +362,11 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 
 	//Init
 	for i := 0; i < h.N; i++ {
-		a[i][0] = (-1.0 * math.Log(h.Pi[i])) - math.Log(h.B[i][observation[0]])
+		if observation[0] != 0 {
+			a[i][0] = (-1.0 * math.Log(h.Pi[i])) - math.Log(h.B[i][observation[0]])
+		} else {
+			a[i][0] = (-1.0 * math.Log(h.Pi[i]))
+		}
 	}
 
 	//Induction
@@ -373,7 +383,11 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 				}
 			}
 			// fmt.Println(j, t, observation[t])
-			a[j][t] = min_weight - math.Log(h.B[j][observation[t]])
+			a[j][t] = min_weight
+			
+			if observation[t] != 0 {
+				a[j][t] -= math.Log(h.B[j][observation[t]])
+			}
 			s[j][t] = min_state
 		}
 	}
@@ -398,6 +412,7 @@ func (h *HiddenMM) Viterbi(observation []int, probability *float64) []int {
 	}
 
 	*probability = math.Exp(-min_weight)
+	fmt.Println("Minimal probability", *probability)
 	return path
 }
 
