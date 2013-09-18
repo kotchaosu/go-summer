@@ -2,15 +2,16 @@
 
 Summarization module (sentence extractor) based on Hidden Markov Model
 
-All written in Go
+Go only
 
-## Algorithms solving all three classic problems of HMM:
+## Algorithms solving three classic problems of HMM:
 	* Evaluation -> Forward algorithm
 	* Decoding -> Viterbi algorithm
 	* Optimization -> Baum-Welch algorithm
 
 ## Main resource of code:
-	http://www.codeproject.com/Articles/69647/Hidden-Markov-Models-in-C
+
+http://www.codeproject.com/Articles/69647/Hidden-Markov-Models-in-C
 
 ## Differences in my approach:
 	* Multiple features for emissions.
@@ -19,5 +20,4 @@ All written in Go
 	* Using concurrency for better performance (TODO).
 
 ## Basic usage:
-	> TODO
 	Still raw printing result to standard input.
