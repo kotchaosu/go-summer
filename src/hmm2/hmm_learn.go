@@ -31,7 +31,7 @@ type HiddenMM struct {
 }
 
 
-func InitHMM(N, M int) HiddenMM {
+func InitHMM(N, M0, M1 int) HiddenMM {
 	fmt.Println("Creating model")
 
 	Pi := make([]float64, N, N)
