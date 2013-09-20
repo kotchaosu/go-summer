@@ -1,5 +1,5 @@
 // Hidden Markov Model toolkit
-package hmm2
+package hmm
 
 import (
 	"fmt"
@@ -20,8 +20,10 @@ const (
 type HiddenMM struct {
 	// number of states
 	N int
-	// number of observations per state
-	M int
+	// number of symbols for feature 0
+	M0 int
+	// number of symbols for feature 1
+	M1 int
 	// transition probabilities N x N
 	A [][]float64
 	// emission probabilities N x M0 x M1
@@ -31,7 +33,7 @@ type HiddenMM struct {
 }
 
 
-func InitHMM(N, M int) HiddenMM {
+func InitHMM(N, M0, M1 int) HiddenMM {
 	fmt.Println("Creating model")
 
 	Pi := make([]float64, N, N)
@@ -101,7 +103,7 @@ func (h *HiddenMM) Forward(observation [][]int, c []float64) [][]float64 {
 	// STEP 1
 	// init
 	for i := 0; i < h.N; i++ {
-		if observation[0] != 0 {
+		if observation[0][0] * observation[0][1] != 0 {
 			fwd[0][i] = h.Pi[i] * h.B[i][observation[0][0]][observation[0][1]]
 		} else {
 			fwd[0][i] = h.Pi[i]
@@ -319,23 +321,25 @@ func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float
 
 			// emission probabilities
 			for i := 0; i < h.N; i++ {
-				for j := 0; j < h.M; j++ {
-					if i % 2 != 0 {
-						den, num := 0.0, 0.0
-						for k := range observations {
-							for l := range observations[k] {
-								if observations[k][l] == j {
-									num += gamma[k][l][i]
+				for j := 0; j < h.M0; j++ {
+					for k := 0; k < h.M1; k++ {
+						if i % 2 != 0 {
+							den, num := 0.0, 0.0
+							for l := range observations {
+								for m := range observations[l] {
+									if observations[l][m][0] == j && observations[l][m][1] == k{
+										num += gamma[l][m][i]
+									}
+								}
+								for m := range observations[l] {
+									den += gamma[l][m][i]
 								}
 							}
-							for l := range observations[k] {
-								den += gamma[k][l][i]
+							if num == 0.0 {
+								h.B[i][j][k] = 1e-10
+							} else {
+								h.B[i][j][k] = num / den
 							}
-						}
-						if num == 0.0 {
-							h.B[i][j] = 1e-10
-						} else {
-							h.B[i][j] = num / den
 						}
 					}
 				}
@@ -396,6 +400,7 @@ func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 			}
 
 			s[j][t] = min_state
+			fmt.Println("min_state", min_state)
 		}
 	}
 
@@ -408,6 +413,7 @@ func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 			min_state = i
 			min_weight = a[i][T - 1]
 		}
+		fmt.Println("min_state/weight", min_state, min_weight)
 	}
 
 	//Traceback
@@ -514,7 +520,9 @@ func Load(N, M0, M1 int) HiddenMM {
 
 		for j := range B[i] {
 			B[i][j] = make([]float64, M1, M1)
-				B[i][j][k], _ = redis.Float64(loadedB[j], err)
+			for k := range B[i][j] {
+				B[i][j][k], _ = redis.Float64(loadedB[j], err)	
+			}
 		}
 	}
 

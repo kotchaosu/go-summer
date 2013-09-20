@@ -20,10 +20,10 @@ const(
 	AEVAL = "/home/maxabsent/Documents/learning_set/evaluation/auto/0/"
 	FILENAME = "text_1"
 
-	FEATURE = 0
-
+	// these values are assumed... can't predict everything -> but can, indeed, limit them
 	N = 200
-	M = 10
+	M0 = 10
+	M1 = 100
 	// <<<
 )
 
@@ -86,12 +86,12 @@ func CloseDir(dir *os.File) {
 // Analyze full text and summarization to prepare observations:
 //	- vectors of features
 //	- binary table of sentence in summarization presence
-func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int {
+func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 
 	reader_full := GetReader(full_dir + filename)
 	reader_summ := GetReader(summ_dir + filename)
 
-	sentence_counter := make([]int, 0, 0)
+	sentence_counter := make([][]int, 0, 0)
 	sentence_number, paragraph_number := 0, 0
 
 	spar, _ := reader_summ.ReadBytes('\n')
@@ -107,30 +107,17 @@ func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int
 			continue
 		}
 
-		if feature == 0 {
-			for i, s := range sentences {
-				if strings.Contains(sum_sentences, s[:len(s)-1]) {
-					sentence_counter = append(sentence_counter, i + 1)
-				} else {
-					sentence_counter = append(sentence_counter, 0)
-				}
-				if sentence_number++; 2 * sentence_number >= N {
-					return sentence_counter
-				}
+		for i, s := range sentences {
+			s_features := make([]int, 2, 2)
+			sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
+			
+			if strings.Contains(sum_sentences, s[:len(s)-1]) {
+				s_features[0], s_features[1] = i + 1, len(sentence.GetParts())
 			}
-		} else {
-			for _, s := range sentences {
-				
-				sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
-
-				if strings.Contains(sum_sentences, s[:len(s)-1]) {
-					sentence_counter = append(sentence_counter, len(sentence.GetParts()))
-				} else {
-					sentence_counter = append(sentence_counter, 0)
-				}
-				if sentence_number++; 2 * sentence_number >= N {
-					return sentence_counter
-				}
+			sentence_counter = append(sentence_counter, s_features)
+			
+			if sentence_number++; 2 * sentence_number >= N {
+				return sentence_counter
 			}
 		}
 		paragraph_number++
@@ -143,9 +130,9 @@ func ObserveFile(filename, full_dir, summ_dir string, states, feature int) []int
 // Function turns file into slice with feature symbols
 // 	- feature == 0 -> position in paragraph
 //  - feature == 1 -> sentence length // now for else
-func CreateObservationSequence(filename string, states, feature int) []int {
+func CreateObservationSequence(filename string, states int) [][]int {
 	
-	output := make([]int, 0, 0)
+	output := make([][]int, 0, 0)
 	sentence_number := 0
 
 	reader_full := GetReader(filename)
@@ -159,17 +146,14 @@ func CreateObservationSequence(filename string, states, feature int) []int {
 			continue
 		}
 
-		if feature == 0 {
-			for i := range sentences {
-				output = append(output, i + 1)
-			}
-		} else {
-			for _, s := range sentences {
-				sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
-				output = append(output, len(sentence.GetParts()))
-			}
-		}
+		for i, s := range sentences {
+			s_features := make([]int, 2, 2)
+			sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
+			
+			s_features[0], s_features[1] = i + 1, len(sentence.GetParts())
 
+			output = append(output, s_features)
+		}
 		if sentence_number++; 2 * sentence_number >= states {
 			break
 		}
@@ -209,6 +193,7 @@ func PrintSequence(filename string, sequence []int) string {
 				for i := 0; i < len(s); i++ {
 					buf[i] = byte(s[i])
 				}
+				// TODO: this shit doesn't work
 				writer.Write(buf)
 			}
 
@@ -235,11 +220,8 @@ func EvaluateSummary(filename, human_summ_dir, auto_summ_dir string) (float64, f
 	apar, _ := reader_auto.ReadBytes('\n')
 	auto_summarization := nlptk.Paragraph{0, string(apar[:len(apar)-1])}
 
-	match_auto := 0
-	all_auto := 0
-
-	match_human := 0
-	all_human := 0
+	match_auto, all_auto := 0, 0
+	match_human, all_human := 0, 0
 
 	for _, sentence := range auto_summarization.GetParts() {
 		s := nlptk.Sentence{0, sentence}
@@ -268,7 +250,7 @@ func EvaluateSummary(filename, human_summ_dir, auto_summ_dir string) (float64, f
 }
 
 
-func Educate(full_dir, summ_dir string, N, M, feature, iterations int, tolerance float64) {
+func Educate(full_dir, summ_dir string, N, M0, M1, iterations int, tolerance float64) {
 	dir := OpenDir(full_dir)
 
 	// select all filenames from open directory
@@ -281,14 +263,14 @@ func Educate(full_dir, summ_dir string, N, M, feature, iterations int, tolerance
 
 	CloseDir(dir)
 
-	hmm := hmm.InitHMM(N, M)
+	hmm := hmm.InitHMM(N, M0, M1)
 
-	observed_sequence := make([][]int, len(files_slice))
+	observed_sequence := make([][][]int, len(files_slice))
 
 	for i, f := range files_slice {
 		fmt.Println("Processing", f, "file")
 		// learn only sequences for now
-		observed_sequence[i] = ObserveFile(f, full_dir, summ_dir, N, feature)
+		observed_sequence[i] = ObserveFile(f, full_dir, summ_dir, N)
 	}
 
 	fmt.Println("Begin learning...")
@@ -302,12 +284,12 @@ func Educate(full_dir, summ_dir string, N, M, feature, iterations int, tolerance
 
 
 func main() {
-	// Educate(FULL, SUMM, N, M, FEATURE, 8, 0.01)
+	Educate(FULL, SUMM, N, M0, M1, 16, 0.01)
 	// read model from db
-	markovmodel := hmm.Load(N, M)
+	markovmodel := hmm.Load(N, M0, M1)
 	likelihood := 0.0
 
-	input_seq := CreateObservationSequence(FILE, N, FEATURE)
+	input_seq := CreateObservationSequence(FILE, N)
 	vitout := markovmodel.Viterbi(input_seq, &likelihood)
 	
 	fmt.Println(vitout)
