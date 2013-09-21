@@ -103,11 +103,7 @@ func (h *HiddenMM) Forward(observation [][]int, c []float64) [][]float64 {
 	// STEP 1
 	// init
 	for i := 0; i < h.N; i++ {
-		if observation[0][0] * observation[0][1] != 0 {
-			fwd[0][i] = h.Pi[i] * h.B[i][observation[0][0]][observation[0][1]]
-		} else {
-			fwd[0][i] = h.Pi[i]
-		}
+		fwd[0][i] = h.Pi[i] * h.B[i][observation[0][0]][observation[0][1]]
 		c[0] += fwd[0][i]
 	}
 
@@ -123,15 +119,7 @@ func (h *HiddenMM) Forward(observation [][]int, c []float64) [][]float64 {
 	for t := 1; t < len(observation); t++ {
 		for i := 0; i < h.N; i++ {
 			for j := 0; j < h.N; j++ {
-
-				p := 0.0
-				// check if state is silent
-				if observation[t][0] * observation[t][1] != 0 {
-					p = h.A[j][i] * h.B[i][observation[t][0]][observation[t][1]]
-				} else {
-					p = h.A[j][i]
-				}
-				fwd[t][i] += fwd[t - 1][j] * p
+				fwd[t][i] += fwd[t - 1][j] * h.A[j][i] * h.B[i][observation[t][0]][observation[t][1]]
 			}
 			c[t] += fwd[t][i]  // likelihood
 		}
@@ -167,15 +155,7 @@ func (h *HiddenMM) Backward(observation [][]int, c []float64) [][]float64 {
 		for i := 0; i < h.N; i++ {
 			sum := 0.0
 			for j := 0; j < h.N; j++ {
-				
-				p := 0.0
-				// check if state is silent
-				if observation[t + 1][0] * observation[t + 1][1] != 0 {
-					p = h.B[j][observation[t + 1][0]][observation[t + 1][1]]
-				} else {
-					p = 1.0
-				}
-				sum += h.A[i][j] * p * bwd[t + 1][j]
+				sum += h.A[i][j] * h.B[j][observation[t + 1][0]][observation[t + 1][1]] * bwd[t + 1][j]
 			}
 			bwd[t][i] = bwd[t][i] + sum / c[t]
 		}
@@ -250,15 +230,7 @@ func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float
 
 				for k := 0; k < h.N; k++ {
 					for l := 0; l < h.N; l++ {
-
-						p := 0.0
-						// silent state
-						if observations[i][j + 1][0] * observations[i][j + 1][1] != 0 {
-							p = h.B[l][observations[i][j + 1][0]][observations[i][j + 1][1]]
-						} else {
-							p = 1.0
-						}
-						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * p
+						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * h.B[l][observations[i][j + 1][0]][observations[i][j + 1][1]]
 						s += epsilon[i][j][k][l]
 					}
 				}
@@ -352,8 +324,13 @@ func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float
 
 
 // Decode hidden states
+// Algorithm was modified for problem purpose, it was assumed that:
+// - every state enables transition to next one
+// - every state enables transition to one of two states
+// - every sentences has two possible states
+// Decode hidden states
 func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
-	
+
 	T := len(observation)
 	min_state := 0
 	min_weight := 0.0
@@ -394,13 +371,12 @@ func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 				}
 			}
 			a[j][t] = min_weight
-			
+
 			if observation[t][0] * observation[t][1] != 0 {
 				a[j][t] -= math.Log(h.B[j][observation[t][0]][observation[t][1]])
 			}
 
 			s[j][t] = min_state
-			fmt.Println("min_state", min_state)
 		}
 	}
 
@@ -413,7 +389,6 @@ func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 			min_state = i
 			min_weight = a[i][T - 1]
 		}
-		fmt.Println("min_state/weight", min_state, min_weight)
 	}
 
 	//Traceback
@@ -426,8 +401,10 @@ func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 
 	*probability = math.Exp(-min_weight)
 	fmt.Println("Minimal probability", *probability)
+	fmt.Println(path)
 	return path
 }
+
 
 
 func (h *HiddenMM) Evaluate(observation [][]int, logarithm bool) float64 {

@@ -91,7 +91,7 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 	reader_full := GetReader(full_dir + filename)
 	reader_summ := GetReader(summ_dir + filename)
 
-	sentence_counter := make([][]int, 0, 0)
+	sentence_counter := make([][]int, states, states)
 	sentence_number, paragraph_number := 0, 0
 
 	spar, _ := reader_summ.ReadBytes('\n')
@@ -108,13 +108,17 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 		}
 
 		for i, s := range sentences {
-			s_features := make([]int, 2, 2)
 			sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
 			
-			if strings.Contains(sum_sentences, s[:len(s)-1]) {
-				s_features[0], s_features[1] = i + 1, len(sentence.GetParts())
+			if strings.Contains(sum_sentences, s[:len(s)-1]) { 
+				// summary
+				sentence_counter[2 * sentence_number] = []int{0, 0}
+				sentence_counter [2 * sentence_number + 1] = []int{i + 1, len(sentence.GetParts())}
+			} else {
+				// non-summary
+				sentence_counter[2 * sentence_number] = []int{i + 1, len(sentence.GetParts())}
+				sentence_counter [2 * sentence_number + 1] = []int{0, 0}
 			}
-			sentence_counter = append(sentence_counter, s_features)
 			
 			if sentence_number++; 2 * sentence_number >= N {
 				return sentence_counter
@@ -122,6 +126,13 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 		}
 		paragraph_number++
 	}
+
+	// if sequence isn't complete
+	for  i := sentence_number; 2 * i < N; i++ {
+		sentence_counter[2 * i] = []int{0, 0}
+		sentence_counter[2 * i + 1] = []int{0, 0}
+	}
+
 	fmt.Println("sequence", filename, len(sentence_counter), sentence_counter)
 	return sentence_counter
 }
@@ -132,7 +143,7 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 //  - feature == 1 -> sentence length // now for else
 func CreateObservationSequence(filename string, states int) [][]int {
 	
-	output := make([][]int, 0, 0)
+	output := make([][]int, states, states)
 	sentence_number := 0
 
 	reader_full := GetReader(filename)
@@ -147,17 +158,22 @@ func CreateObservationSequence(filename string, states int) [][]int {
 		}
 
 		for i, s := range sentences {
-			s_features := make([]int, 2, 2)
-			sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
+			output[2 * sentence_number] = []int{0, 0}  // non-summary state
 			
-			s_features[0], s_features[1] = i + 1, len(sentence.GetParts())
-
-			output = append(output, s_features)
+			sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
+			output[2 * sentence_number + 1] = []int{i + 1, len(sentence.GetParts())} // summary state
 		}
 		if sentence_number++; 2 * sentence_number >= states {
 			break
 		}
 	}
+
+	// if sequence isn't complete
+	for  i := sentence_number; 2 * i < N; i++ {
+		output[2 * i] = []int{0, 0}
+		output[2 * i + 1] = []int{0, 0}
+	}
+
 	fmt.Println("Created sequence:", output)
 	return output
 }
@@ -188,7 +204,7 @@ func PrintSequence(filename string, sequence []int) string {
 		}
 
 		for _, s := range sentences {
-			if sequence[sentence_number] == 1 {
+			if sequence[sentence_number] == 2 {
 				output = append(output, s)
 				for i := 0; i < len(s); i++ {
 					buf[i] = byte(s[i])
