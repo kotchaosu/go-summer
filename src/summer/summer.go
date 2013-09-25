@@ -14,14 +14,14 @@ const(
 	// >>> TODO: all of these should be parameters main()
 	FULL = "/home/maxabsent/Documents/learning_set/full_texts/"
 	SUMM = "/home/maxabsent/Documents/learning_set/summarizations/"
-	FILE = "/home/maxabsent/Documents/learning_set/evaluation/text_1"
+	FILE = "/home/maxabsent/Documents/learning_set/evaluation/text_0"
 
 	HEVAL = "/home/maxabsent/Documents/learning_set/evaluation/human/"
 	AEVAL = "/home/maxabsent/Documents/learning_set/evaluation/auto/0/"
-	FILENAME = "text_1"
+	FILENAME = "text_0"
 
 	// these values are assumed... can't predict everything -> but can, indeed, limit them
-	N = 200
+	N = 100
 	M0 = 10
 	M1 = 100
 	// <<<
@@ -91,7 +91,7 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 	reader_full := GetReader(full_dir + filename)
 	reader_summ := GetReader(summ_dir + filename)
 
-	sentence_counter := make([][]int, states, states)
+	sentence_counter := make([][]int, 0, 0)
 	sentence_number, paragraph_number := 0, 0
 
 	spar, _ := reader_summ.ReadBytes('\n')
@@ -112,12 +112,12 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 			
 			if strings.Contains(sum_sentences, s[:len(s)-1]) { 
 				// summary
-				sentence_counter[2 * sentence_number] = []int{0, 0}
-				sentence_counter [2 * sentence_number + 1] = []int{i + 1, len(sentence.GetParts())}
+				sentence_counter = append(sentence_counter, []int{0, 0})
+				sentence_counter = append(sentence_counter, []int{i + 1, len(sentence.GetParts())})
 			} else {
 				// non-summary
-				sentence_counter[2 * sentence_number] = []int{i + 1, len(sentence.GetParts())}
-				sentence_counter [2 * sentence_number + 1] = []int{0, 0}
+				sentence_counter = append(sentence_counter, []int{i + 1, len(sentence.GetParts())})
+				sentence_counter = append(sentence_counter, []int{0, 0})
 			}
 			
 			if sentence_number++; 2 * sentence_number >= N {
@@ -125,12 +125,6 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 			}
 		}
 		paragraph_number++
-	}
-
-	// if sequence isn't complete
-	for  i := sentence_number; 2 * i < N; i++ {
-		sentence_counter[2 * i] = []int{0, 0}
-		sentence_counter[2 * i + 1] = []int{0, 0}
 	}
 
 	fmt.Println("sequence", filename, len(sentence_counter), sentence_counter)
@@ -143,7 +137,8 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 //  - feature == 1 -> sentence length // now for else
 func CreateObservationSequence(filename string, states int) [][]int {
 	
-	output := make([][]int, states, states)
+	output := make([][]int, 0, 0)
+
 	sentence_number := 0
 
 	reader_full := GetReader(filename)
@@ -157,21 +152,14 @@ func CreateObservationSequence(filename string, states int) [][]int {
 			continue
 		}
 
-		for i, s := range sentences {
-			output[2 * sentence_number] = []int{0, 0}  // non-summary state
-			
+		for i, s := range sentences {			
 			sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
-			output[2 * sentence_number + 1] = []int{i + 1, len(sentence.GetParts())} // summary state
+
+			output = append(output, []int{i + 1, len(sentence.GetParts())}) // summary state
 		}
 		if sentence_number++; 2 * sentence_number >= states {
 			break
 		}
-	}
-
-	// if sequence isn't complete
-	for  i := sentence_number; 2 * i < N; i++ {
-		output[2 * i] = []int{0, 0}
-		output[2 * i + 1] = []int{0, 0}
 	}
 
 	fmt.Println("Created sequence:", output)
@@ -204,13 +192,15 @@ func PrintSequence(filename string, sequence []int) string {
 		}
 
 		for _, s := range sentences {
-			if sequence[sentence_number] == 2 {
-				output = append(output, s)
-				for i := 0; i < len(s); i++ {
-					buf[i] = byte(s[i])
+			for _, v := range sequence {
+				if v == 2 * sentence_number + 1 {
+					output = append(output, s)
+					for i := 0; i < len(s); i++ {
+						buf[i] = byte(s[i])
+					}
+					// TODO: this shit doesn't work
+					writer.Write(buf)
 				}
-				// TODO: this shit doesn't work
-				writer.Write(buf)
 			}
 
 			if sentence_number++; 2 * sentence_number + 1 >= len(sequence) {
@@ -223,50 +213,7 @@ func PrintSequence(filename string, sequence []int) string {
 }
 
 
-// Evaluates summarization - return % of sentences in human-created summarization
-// which appeared in program-created one
-func EvaluateSummary(filename, human_summ_dir, auto_summ_dir string) (float64, float64) {
-
-	reader_human := GetReader(human_summ_dir + filename)
-	reader_auto := GetReader(auto_summ_dir + filename)
-
-	hpar, _ := reader_human.ReadBytes('\n')
-	human_summarization := nlptk.Paragraph{0, string(hpar[:len(hpar)-1])}
-
-	apar, _ := reader_auto.ReadBytes('\n')
-	auto_summarization := nlptk.Paragraph{0, string(apar[:len(apar)-1])}
-
-	match_auto, all_auto := 0, 0
-	match_human, all_human := 0, 0
-
-	for _, sentence := range auto_summarization.GetParts() {
-		s := nlptk.Sentence{0, sentence}
-		for _, bigram := range s.CreateBigrams() {
-			if human_summarization.IsIn(strings.Join(bigram, " ")) {
-				match_auto++
-			}
-			all_auto++
-		}
-	}
-
-	for _, sentence := range human_summarization.GetParts() {
-		s := nlptk.Sentence{0, sentence}
-		for _, bigram := range s.CreateBigrams() {
-			if auto_summarization.IsIn(strings.Join(bigram, " ")) {
-				match_human++
-			}
-			all_human++
-		}
-	}
-
-	auto_coverage := float64(match_auto) / float64(all_auto)
-	human_coverage := float64(match_human) / float64(all_human)
-
-	return auto_coverage, human_coverage
-}
-
-
-func Educate(full_dir, summ_dir string, N, M0, M1, iterations int, tolerance float64) {
+func Educate(full_dir, summ_dir string, N, M0, M1 int) {
 	dir := OpenDir(full_dir)
 
 	// select all filenames from open directory
@@ -290,7 +237,8 @@ func Educate(full_dir, summ_dir string, N, M0, M1, iterations int, tolerance flo
 	}
 
 	fmt.Println("Begin learning...")
-	hmm.Learn(observed_sequence, iterations, tolerance)
+	// hmm.Learn(observed_sequence, iterations, tolerance)
+	hmm.Learn(observed_sequence)
 	
 	fmt.Println("Saving model in database...")
 	hmm.Store()
@@ -300,7 +248,8 @@ func Educate(full_dir, summ_dir string, N, M0, M1, iterations int, tolerance flo
 
 
 func main() {
-	Educate(FULL, SUMM, N, M0, M1, 16, 0.01)
+	Educate(FULL, SUMM, N, M0, M1)
+
 	// read model from db
 	markovmodel := hmm.Load(N, M0, M1)
 	likelihood := 0.0
@@ -310,6 +259,5 @@ func main() {
 	
 	fmt.Println(vitout)
 	fmt.Println(PrintSequence(FILE, vitout))
-
-	fmt.Println(EvaluateSummary(FILENAME, HEVAL, AEVAL))
+	fmt.Println(markovmodel.Evaluate(input_seq, false))
 }
