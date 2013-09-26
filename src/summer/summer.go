@@ -145,8 +145,6 @@ func CreateObservationSequence(filename string, states int) [][]int {
 		}
 		if s_number++; 2 * s_number >= states { break }
 	}
-
-	fmt.Println("Created sequence:", output)
 	return output
 }
 
@@ -189,6 +187,20 @@ func PrintSequence(filename string, sequence []int) string {
 }
 
 
+func UpdateObservation (o [][][]int, c chan [][]int, quit chan int) {
+	i := 0
+	for {
+		select {
+			case x := <- c:
+				o[i] = x
+				i++
+			case <-quit:
+				return
+		}
+	}
+}
+
+
 func Educate(full_dir, summ_dir string, N, M0, M1 int) {
 	// select all files from given directories
 	dir := OpenDir(full_dir)
@@ -202,15 +214,21 @@ func Educate(full_dir, summ_dir string, N, M0, M1 int) {
 
 	hmm := hmm.InitHMM(N, M0, M1)
 
-	observed_sequence := make([][][]int, len(files_slice))
+	c := make(chan [][]int)
+	quit := make(chan int)
 
-	for i, f := range files_slice {
-		fmt.Println("Processing", f, "file")
-		observed_sequence[i] = ObserveFile(f, full_dir, summ_dir, N)
-	}
+	observed_sequences := make([][][]int, len(files_slice))
+
+	go func() {
+		for _, f := range files_slice {
+			c <- ObserveFile(f, full_dir, summ_dir, N)
+		}
+		quit <- 0
+	}()
+	UpdateObservation(observed_sequences, c, quit)
 
 	fmt.Println("Begin learning...")
-	hmm.Learn(observed_sequence)
+	hmm.Learn(observed_sequences)
 	
 	fmt.Println("Saving model in database...")
 	hmm.Store()
@@ -251,7 +269,7 @@ func main() {
 	input_seq := CreateObservationSequence(filename, N)
 	vitout := markovmodel.Viterbi(input_seq, &likelihood)
 
-	fmt.Println(vitout)
-	fmt.Println("Observation sequence", PrintSequence(filename, vitout))
+	fmt.Println("SUMMARY")
+	fmt.Println(PrintSequence(filename, vitout))
 	fmt.Println("Result sequence probability", markovmodel.Evaluate(input_seq, false))
 }
