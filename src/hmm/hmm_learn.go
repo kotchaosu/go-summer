@@ -327,34 +327,50 @@ func Int2Str(i int) string {
 }
 
 
+func ManageStoring(c, quit chan int, rows int) {
+
+	for i := 0; i < rows; i++ {
+		c <- i
+	}
+	close(c)
+
+	<-quit
+	return
+}
+
+
+func (h *HiddenMM) StoreRow(i int, connection redis.Conn) {
+
+	connection.Do("RPUSH", DBPI, h.Pi[i])	
+	connection.Send("MULTI")
+
+	for j := range h.A[i] {
+		connection.Send("RPUSH", DBA + Int2Str(i), h.A[i][j])
+	}
+
+	for j := range h.B[i] {
+		for k := range h.B[i][j] {
+			connection.Send("RPUSH", DBB + Int2Str(i) + FS + Int2Str(j), h.B[i][j][k])
+		}
+	}
+	connection.Do("EXEC")
+}
+
+
 func (h *HiddenMM) Store() {
 	pool := dbconn.Pool
 	connection := pool.Get()
 	
-	fmt.Println("Saving transition matrix A...")
-	connection.Send("MULTI")
-	for i := range h.A {
-		for j := range h.A[i] {
-			connection.Send("RPUSH", DBA + Int2Str(i), h.A[i][j])
-		}
-	}
-	connection.Do("EXEC")
+	c, quit := make(chan int), make(chan int)
 
-	fmt.Println("Saving emission matrix B...")
-	connection.Send("MULTI")
-	for i := range h.B {
-		for j := range h.B[i] {
-			for k := range h.B[i][j] {
-				connection.Send("RPUSH", DBB + Int2Str(i) + FS + Int2Str(j), h.B[i][j][k])
-			}
+	go func() {
+		for i := range c {			
+			h.StoreRow(i, connection)
 		}
-	}
-	connection.Do("EXEC")
+		quit <- 0
+	}()
+	ManageStoring(c, quit, h.N)
 
-	fmt.Println("Saving probability distribution Pi...")
-	for i := range h.Pi {
-		connection.Do("RPUSH", DBPI, h.Pi[i])
-	}
 	connection.Close()
 }
 
