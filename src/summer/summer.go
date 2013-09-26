@@ -78,44 +78,43 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 	reader_full := GetReader(full_dir + filename)
 	reader_summ := GetReader(summ_dir + filename)
 
-	sentence_counter := make([][]int, 0, 0)
-	sentence_number, paragraph_number := 0, 0
+	s_counter := make([][]int, 0, 0)
+	s_number, p_number := 0, 0
 
 	spar, _ := reader_summ.ReadBytes('\n')
-	summarization := nlptk.Paragraph{paragraph_number, string(spar)}
+	summarization := nlptk.Paragraph{p_number, string(spar)}
 	sum_sentences := summarization.Text
 
 	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
 
 		var sentences []string
-		paragraph := nlptk.Paragraph{paragraph_number, string(bpar[:len(bpar)-1])}
+		paragraph := nlptk.Paragraph{p_number, string(bpar[:len(bpar)-1])}
 
 		if sentences = paragraph.GetParts(); len(paragraph.Text) <= 1 || len(sentences) == 0 {
 			continue
 		}
 
 		for i, s := range sentences {
-			sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
+			sentence := nlptk.Sentence{s_number, s[:len(s)-1]}
 			
 			if strings.Contains(sum_sentences, s[:len(s)-1]) { 
 				// summary
-				sentence_counter = append(sentence_counter, []int{0, 0})
-				sentence_counter = append(sentence_counter, []int{i + 1, len(sentence.GetParts())})
+				s_counter = append(s_counter, []int{0, 0})
+				s_counter = append(s_counter, []int{i + 1, len(sentence.GetParts())})
 			} else {
 				// non-summary
-				sentence_counter = append(sentence_counter, []int{i + 1, len(sentence.GetParts())})
-				sentence_counter = append(sentence_counter, []int{0, 0})
+				s_counter = append(s_counter, []int{i + 1, len(sentence.GetParts())})
+				s_counter = append(s_counter, []int{0, 0})
 			}
 			
-			if sentence_number++; 2 * sentence_number >= states {
-				return sentence_counter
+			if s_number++; 2 * s_number >= states {
+				return s_counter
 			}
 		}
-		paragraph_number++
+		p_number++
 	}
-
-	fmt.Println("sequence", filename, len(sentence_counter), sentence_counter)
-	return sentence_counter
+	fmt.Println("Sequence", filename, s_counter)
+	return s_counter
 }
 
 
@@ -126,27 +125,25 @@ func CreateObservationSequence(filename string, states int) [][]int {
 	
 	output := make([][]int, 0, 0)
 
-	sentence_number := 0
+	s_number := 0
 
 	reader_full := GetReader(filename)
 
 	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
 		
 		var sentences []string
-		paragraph := nlptk.Paragraph{0, string(bpar[:len(bpar)-1])}
+		par := nlptk.Paragraph{0, string(bpar[:len(bpar)-1])}
 
-		if sentences = paragraph.GetParts(); len(paragraph.Text) <= 1 || len(sentences) == 0 {
+		if sentences = par.GetParts(); len(par.Text) <= 1 || len(sentences) == 0 {
 			continue
 		}
 
 		for i, s := range sentences {			
-			sentence := nlptk.Sentence{sentence_number, s[:len(s)-1]}
+			sentence := nlptk.Sentence{s_number, s[:len(s)-1]}
 
 			output = append(output, []int{i + 1, len(sentence.GetParts())}) // summary state
 		}
-		if sentence_number++; 2 * sentence_number >= states {
-			break
-		}
+		if s_number++; 2 * s_number >= states { break }
 	}
 
 	fmt.Println("Created sequence:", output)
@@ -158,36 +155,31 @@ func CreateObservationSequence(filename string, states int) [][]int {
 func PrintSequence(filename string, sequence []int) string {
 	
 	output := make([]string, 0, 0)
-	sentence_number := 0  // AKA states counter
+	s_number := 0
 
 	reader_full := GetReader(filename)
 	writer := GetWriter(filename)
-
-    // buf := make([]byte, 1024)
 
 	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
 
 		paragraph := nlptk.Paragraph{0, string(bpar[:len(bpar)-1])}
 		var sentences []string
 
-		if len(paragraph.Text) <= 1 {
-			continue
-		}
-
-		if sentences = paragraph.GetParts(); len(sentences) == 0 {
-			continue
-		}
+		// check if paragraph is empty
+		if len(paragraph.Text) <= 1 { continue }
+		// just in case avoid kinky sentences
+		if sentences = paragraph.GetParts(); len(sentences) == 0 { continue }
 
 		for _, s := range sentences {
 			for _, v := range sequence {
-				if v == 2 * sentence_number + 1 {
+				if v == 2 * s_number + 1 {
 					output = append(output, s)
 					writer.Write([]byte(s))
 				}
 			}
 
-			if sentence_number++; 2 * sentence_number + 1 >= len(sequence) {
-				fmt.Println(writer.Flush())
+			if s_number++; 2 * s_number + 1 >= len(sequence) {
+				writer.Flush()
 				return strings.Join(output, ". ")
 			}
 		}
@@ -198,16 +190,14 @@ func PrintSequence(filename string, sequence []int) string {
 
 
 func Educate(full_dir, summ_dir string, N, M0, M1 int) {
+	// select all files from given directories
 	dir := OpenDir(full_dir)
-
-	// select all filenames from open directory
 	files_slice, err := dir.Readdirnames(0)
 
 	if err != nil {
 		fmt.Println("Error reading filenames from directory", full_dir)
 		os.Exit(1)
 	}	
-
 	CloseDir(dir)
 
 	hmm := hmm.InitHMM(N, M0, M1)
@@ -216,7 +206,6 @@ func Educate(full_dir, summ_dir string, N, M0, M1 int) {
 
 	for i, f := range files_slice {
 		fmt.Println("Processing", f, "file")
-		// learn only sequences for now
 		observed_sequence[i] = ObserveFile(f, full_dir, summ_dir, N)
 	}
 
@@ -228,6 +217,7 @@ func Educate(full_dir, summ_dir string, N, M0, M1 int) {
 
 	fmt.Println("Learning succeed!")
 }
+
 
 func main() {
 	arguments := os.Args
@@ -253,7 +243,6 @@ func main() {
         os.Exit(1)
     }
 
-
 	Educate(full, summ, N, M0, M1)
 	// read model from db
 	markovmodel := hmm.Load(N, M0, M1)
@@ -263,6 +252,6 @@ func main() {
 	vitout := markovmodel.Viterbi(input_seq, &likelihood)
 
 	fmt.Println(vitout)
-	fmt.Println("", PrintSequence(filename, vitout))
+	fmt.Println("Observation sequence", PrintSequence(filename, vitout))
 	fmt.Println("Result sequence probability", markovmodel.Evaluate(input_seq, false))
 }
