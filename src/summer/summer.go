@@ -10,21 +10,11 @@ import (
 	"strings"
 	)
 
-const(
-	// >>> TODO: all of these should be parameters main()
-	FULL = "/home/maxabsent/Documents/learning_set/full_texts/"
-	SUMM = "/home/maxabsent/Documents/learning_set/summarizations/"
-	FILE = "/home/maxabsent/Documents/learning_set/evaluation/text_0"
-
-	HEVAL = "/home/maxabsent/Documents/learning_set/evaluation/human/"
-	AEVAL = "/home/maxabsent/Documents/learning_set/evaluation/auto/0/"
-	FILENAME = "text_0"
-
-	// these values are assumed... can't predict everything -> but can, indeed, limit them
+const (
+	// model parameters
 	N = 100
 	M0 = 10
 	M1 = 100
-	// <<<
 )
 
 
@@ -48,16 +38,13 @@ func GetReader(filename string) *bufio.Reader {
 
 
 func GetWriter(filename string) *bufio.Writer {
-	file, err := os.Create(filename + "_SUMM")
+	file, err := os.Create(filename + "_s")
 
-	if err != nil { panic (err) }
-
-	defer func() {
-		if err := file.Close(); err != nil {
-            panic(err)
-        }
-	}()
-
+	defer file.Close()
+    if err != nil {
+		fmt.Println("Error reading file", filename)
+		os.Exit(1)
+	}
 	return bufio.NewWriter(file)
 }
 
@@ -120,7 +107,7 @@ func ObserveFile(filename, full_dir, summ_dir string, states int) [][]int {
 				sentence_counter = append(sentence_counter, []int{0, 0})
 			}
 			
-			if sentence_number++; 2 * sentence_number >= N {
+			if sentence_number++; 2 * sentence_number >= states {
 				return sentence_counter
 			}
 		}
@@ -176,7 +163,7 @@ func PrintSequence(filename string, sequence []int) string {
 	reader_full := GetReader(filename)
 	writer := GetWriter(filename)
 
-    buf := make([]byte, 1024)
+    // buf := make([]byte, 1024)
 
 	for bpar, e := reader_full.ReadBytes('\n'); e == nil; bpar, e = reader_full.ReadBytes('\n') {
 
@@ -195,15 +182,12 @@ func PrintSequence(filename string, sequence []int) string {
 			for _, v := range sequence {
 				if v == 2 * sentence_number + 1 {
 					output = append(output, s)
-					for i := 0; i < len(s); i++ {
-						buf[i] = byte(s[i])
-					}
-					// TODO: this shit doesn't work
-					writer.Write(buf)
+					writer.Write([]byte(s))
 				}
 			}
 
 			if sentence_number++; 2 * sentence_number + 1 >= len(sequence) {
+				fmt.Println(writer.Flush())
 				return strings.Join(output, ". ")
 			}
 		}
@@ -237,7 +221,6 @@ func Educate(full_dir, summ_dir string, N, M0, M1 int) {
 	}
 
 	fmt.Println("Begin learning...")
-	// hmm.Learn(observed_sequence, iterations, tolerance)
 	hmm.Learn(observed_sequence)
 	
 	fmt.Println("Saving model in database...")
@@ -246,18 +229,40 @@ func Educate(full_dir, summ_dir string, N, M0, M1 int) {
 	fmt.Println("Learning succeed!")
 }
 
-
 func main() {
-	Educate(FULL, SUMM, N, M0, M1)
+	arguments := os.Args
 
+	var filename, full, summ string
+
+    switch len(arguments) {
+    case 2:
+    	filename = arguments[1]
+		full = "/home/maxabsent/Documents/learning_set/full_texts/"
+		summ = "/home/maxabsent/Documents/learning_set/summarizations/"
+    case 4:
+    	filename = arguments[1]
+		full = arguments[2]
+		summ = arguments[3]
+	default:
+      	fmt.Println(">>> Go Summer usage <<<")
+      	fmt.Println("BASIC USAGE")
+      	fmt.Println("1st arg -> path with file to summarize")
+      	fmt.Println("LEARNING")
+      	fmt.Println("2nd arg -> path with full texts")
+      	fmt.Println("3rd arg -> path with summaries")
+        os.Exit(1)
+    }
+
+
+	Educate(full, summ, N, M0, M1)
 	// read model from db
 	markovmodel := hmm.Load(N, M0, M1)
 	likelihood := 0.0
 
-	input_seq := CreateObservationSequence(FILE, N)
+	input_seq := CreateObservationSequence(filename, N)
 	vitout := markovmodel.Viterbi(input_seq, &likelihood)
-	
+
 	fmt.Println(vitout)
-	fmt.Println(PrintSequence(FILE, vitout))
-	fmt.Println(markovmodel.Evaluate(input_seq, false))
+	fmt.Println("", PrintSequence(filename, vitout))
+	fmt.Println("Result sequence probability", markovmodel.Evaluate(input_seq, false))
 }
