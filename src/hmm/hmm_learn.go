@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	DBA = "@@#"
-	DBB = "@#@"
-	DBPI = "@@@"
-	FS = "$" // Feature separator
+	// keys' markers for Redis DB
+	DBA = "@@#"  // A
+	DBB = "@#@"  // B
+	DBPI = "@@@" // Pi
+	FS = "$"     // Feature separator
 )
 
 
@@ -35,7 +36,6 @@ type HiddenMM struct {
 
 
 func InitHMM(N, M0, M1 int) HiddenMM {
-	fmt.Println("Creating model")
 
 	Pi := make([]float64, N, N)
 
@@ -60,7 +60,6 @@ func InitHMM(N, M0, M1 int) HiddenMM {
 			}
 		}
 	}
-
 	return HiddenMM{N, M0, M1, A, B, Pi}
 }
 
@@ -72,14 +71,11 @@ func CheckConvergence(old_likelihood float64, new_likelihood float64, current_it
 		}
 
 		if max_iter > 0 {
-			if current_iter >= max_iter {
-				return true
-			}
+			if current_iter >= max_iter { return true }
 		}
+
 	} else {
-			if current_iter == max_iter {
-			return true
-		}
+		if current_iter == max_iter { return true }
 	}
 
 	if math.IsNaN(new_likelihood) || math.IsInf(new_likelihood, 0) {
@@ -114,7 +110,7 @@ func (h *HiddenMM) Forward(observation [][]int, c []float64) [][]float64 {
 	// scaling
 	if c[0] != 0 {
 		for i := 0; i < h.N; i++ {
-			fwd[0][i] = fwd[0][i] / c[0]
+			fwd[0][i] /= c[0]
 		}
 	}
 
@@ -138,7 +134,7 @@ func (h *HiddenMM) Forward(observation [][]int, c []float64) [][]float64 {
 		// scaling
 		if c[t] != 0 {
 			for i := 0; i < h.N; i++ {
-				fwd[t][i] = fwd[t][i] / c[t]
+				fwd[t][i] /= c[t]
 			}
 		}
 	}
@@ -177,7 +173,7 @@ func (h *HiddenMM) Backward(observation [][]int, c []float64) [][]float64 {
 				}
 				sum += h.A[i][j] * p * bwd[t + 1][j]
 			}
-			bwd[t][i] = bwd[t][i] + sum / c[t]
+			bwd[t][i] += sum / c[t]
 		}
 	}
 	return bwd
@@ -241,34 +237,6 @@ func (h *HiddenMM) Learn(observations [][][]int) {
 
 
 // Decode hidden states
-// func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
-	
-// 	T := len(observation)
-
-// 	path := make([]int, 0, 0)
-
-// 	//Induction
-// 	t := 0
-// 	path = append(path, t)	
-// 	delta := 2 
-
-// 	for t < 2 * T {
-// 		h1 := h.A[t][t + delta] * h.B[t][observation[t][0]][observation[t][1]]
-// 		h2 := h.A[t][t + delta + 1] * h.B[t + 1][observation[t + 1][0]][observation[t + 1][1]]
-// 		if h1 > h2 {
-// 			t += delta
-// 			path = append(path, t)
-// 			// t += 2
-// 		} else {
-// 			t += delta + 1
-// 			path = append(path, t)
-// 			// t++
-// 		}
-// 	}
-// 	fmt.Println("Minimal probability", *probability)
-// 	return path
-// }
-
 func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 	
 	T := len(observation)
@@ -320,9 +288,7 @@ func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 			min_state = i
 			min_weight = a[i][T - 1]
 		}
-		// fmt.Println("min_state/weight", min_state, min_weight)
 	}
-
 	//Traceback
 	path := make([]int, T)
 	path[T - 1] = min_state
@@ -389,7 +355,6 @@ func (h *HiddenMM) Store() {
 	for i := range h.Pi {
 		connection.Do("RPUSH", DBPI, h.Pi[i])
 	}
-
 	connection.Close()
 }
 
@@ -450,39 +415,3 @@ func Load(N, M0, M1 int) HiddenMM {
 
 	return HiddenMM{N, M0, M1, A, B, Pi}
 }
-
-// // Builds vectors of features for every sentence
-// //
-// // Feature vector:
-// //	1. position within paragraph
-// //	2. number of terms in sentence
-// //	3. how likely the terms are given the baseline of terms
-// //	4. how likely the terms are given the document terms
-// func ComputeFeatures(sentence nlptk.Sentence, document_dict map[string]int) []float64 {
-	
-// 	all_words := float64(dict.GetWordCount("TOTAL"))
-// 	all_doc_words := float64(document_dict["TOTAL"])	
-
-// 	words := sentence.GetParts()
-
-// 	number_of_sentence := float64(sentence.Number)
-// 	number_of_terms := float64(len(words))
-// 	baseline_likelihood := 0.0
-// 	document_likelihood := 0.0
-
-// 	for _, word := range words {
-// 		base_count := float64(dict.GetWordCount(word))
-// 		doc_count := float64(document_dict[word])
-
-// 		baseline_likelihood += math.Log10(base_count/all_words)
-// 		document_likelihood += math.Log10(doc_count/all_doc_words)
-// 	}
-
-// 	features := [...]float64{
-// 		float64(number_of_sentence),
-// 		float64(number_of_terms),
-// 		baseline_likelihood,
-// 		document_likelihood
-// 	}
-// 	return features
-// }
