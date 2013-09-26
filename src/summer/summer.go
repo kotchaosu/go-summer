@@ -187,7 +187,7 @@ func PrintSequence(filename string, sequence []int) string {
 }
 
 
-func UpdateObservation (o [][][]int, c chan [][]int, quit chan int) {
+func UpdateObservation(o [][][]int, c chan [][]int, quit chan int) {
 	i := 0
 	for {
 		select {
