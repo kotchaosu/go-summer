@@ -245,12 +245,11 @@ func main() {
     switch len(arguments) {
     case 2:
     	filename = arguments[1]
-		full = "/home/maxabsent/Documents/learning_set/full_texts/"
-		summ = "/home/maxabsent/Documents/learning_set/summarizations/"
     case 4:
     	filename = arguments[1]
 		full = arguments[2]
 		summ = arguments[3]
+		Educate(full, summ, N, M0, M1)
 	default:
       	fmt.Println(">>> Go Summer usage <<<")
       	fmt.Println("BASIC USAGE")
@@ -261,7 +260,6 @@ func main() {
         os.Exit(1)
     }
 
-	Educate(full, summ, N, M0, M1)
 	// read model from db
 	markovmodel := hmm.Load(N, M0, M1)
 	likelihood := 0.0
