@@ -138,7 +138,7 @@ func CreateObservationSequence(filename string, states int) [][]int {
 			continue
 		}
 
-		for i, s := range sentences {			
+		for i, s := range sentences {
 			sentence := nlptk.Sentence{s_number, s[:len(s)-1]}
 
 			output = append(output, []int{i + 1, len(sentence.GetParts())}) // summary state
@@ -229,6 +229,19 @@ func Educate(full_dir, summ_dir string, N, M0, M1 int) {
 
 	fmt.Println("Begin learning...")
 	hmm.Learn(observed_sequences)
+
+	observed_sequences := make([][][]int, len(files_slice))
+
+	go func() {
+		for _, f := range files_slice {
+			c <- CreateObservationSequence(f, N)
+		}
+		quit <- 0
+	}()
+	UpdateObservation(observed_sequences, c, quit)
+
+	//optimization
+	hmm.UpdateModel(observed_sequences, 0, 0.01)
 	
 	fmt.Println("Saving model in database...")
 	hmm.Store()
@@ -265,6 +278,7 @@ func main() {
 	likelihood := 0.0
 
 	input_seq := CreateObservationSequence(filename, N)
+
 	vitout := markovmodel.Viterbi(input_seq, &likelihood)
 
 	fmt.Println("SUMMARY")
