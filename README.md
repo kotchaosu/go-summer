@@ -26,4 +26,5 @@ Summarization module (sentence extractor) based on Hidden Markov Model
 
 ## Actually improved:
 	* updating model with unsupervised learning
+	* estimating emission distribution (functions instead of slices)
 	* preparing web app
