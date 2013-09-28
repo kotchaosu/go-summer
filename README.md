@@ -23,3 +23,7 @@ Summarization module (sentence extractor) based on Hidden Markov Model
 	
 	command: ./summer filepath -> summarize text file
 			 ./summer filepath full_set_path summ_set_path -> learn from data and summarize
+
+## Actually improved:
+	* updating model with unsupervised learning
+	* preparing web app
