@@ -236,6 +236,174 @@ func (h *HiddenMM) Learn(observations [][][]int) {
 }
 
 
+// Unsupervised Learning - update created model
+func (h *HiddenMM) UpdateModel(observations [][][]int, iterations int, tolerance float64) float64 {
+	
+	if tolerance + float64(iterations) == 0.0 {
+		return 0.0
+	}
+
+	iter := 1
+	stop := false
+
+	// init
+	epsilon := make([][][][]float64, len(observations))
+	gamma := make([][][]float64, len(observations))
+
+	for i := range observations {
+		epsilon[i] = make([][][]float64, len(observations[i]))
+		gamma[i] = make([][]float64, len(observations[i]))
+
+		for j := range observations[i] {
+			epsilon[i][j] = make([][]float64, h.N)
+			gamma[i][j] = make([]float64, h.N)
+
+			for k := 0; k < h.N; k++ {
+				epsilon[i][j][k] = make([]float64, h.N)
+			}
+		}
+	}
+	// initial log-likelihood
+	old_likelihood := math.SmallestNonzeroFloat64
+	new_likelihood := float64(0)
+
+	// maintain loop until reaching tolerance
+	// or number of iterations
+	for !stop {
+		// for each sequence of observations
+		for i := range observations {
+			scaling := make([]float64, len(observations[i]))
+
+			// I STEP
+			// calculate forward & backward probability
+			fwd := h.Forward(observations[i], scaling)
+			bwd := h.Backward(observations[i], scaling)
+
+			// II STEP
+			// transmission & emission pairs
+
+			// gamma
+			for j := range observations[i] {
+				s := float64(0)
+
+				for k := 0; k < h.N; k++ {
+					gamma[i][j][k] = fwd[j][k] * bwd[j][k]
+					s += gamma[i][j][k]
+				}
+				
+				// scaling
+				if s != 0 {
+					for k := 0; k < h.N; k++ {
+						gamma[i][j][k] = gamma[i][j][k] / s
+					}
+				}
+			}
+
+			// epsilon
+			for j := 0; j < len(observations[i]) - 1; j++ {
+				s := 0.0
+
+				for k := 0; k < h.N; k++ {
+					for l := 0; l < h.N; l++ {
+						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * h.B[l][observations[i][j + 1][0]][observations[i][j + 1][1]]
+						s += epsilon[i][j][k][l]
+					}
+				}
+				
+				if s != 0 {
+					for k := 0; k < h.N; k++ {
+						for l := 0; l < h.N; l++ {
+							epsilon[i][j][k][l] = epsilon[i][j][k][l] / s
+						}
+					}
+				}
+			}
+			// log-likelihood for the sequence
+			for t := range scaling {
+				new_likelihood += math.Log(scaling[t])
+			}
+		}
+
+		// average likelihood
+		new_likelihood /= float64(len(observations))
+
+		// check convergence
+		if CheckConvergence(old_likelihood, new_likelihood, iter, iterations, tolerance) {
+			stop = true
+		} else {
+			// STEP 3
+			// parameter re-estimation
+			iter++
+			old_likelihood = new_likelihood
+			new_likelihood = 0.0
+
+			// init probabilities
+			for k := 0; k < h.N; k++ {
+				sum := 0.0
+				for i := range observations {
+					sum += gamma[i][0][k]
+				}
+				h.Pi[k] = sum / float64(len(observations))
+			}
+			
+			// transition probabilities
+			for i := 0; i < h.N; i++ {
+				for j := 0; j < h.N; j++ {
+					den, num := 0.0, 0.0
+					for k := range observations {
+						T := len(observations[k])
+
+						for l := 0; l < T - 1; l++ {
+							num += epsilon[k][l][i][j]
+						}
+						
+						for l := 0; l < T - 1; l++ {
+							den += gamma[k][l][i]
+						}
+					}
+					
+					if den == 0.0 {
+						h.A[i][j] = 0.0
+					} else {
+						h.A[i][j] = num / den
+					}
+				}
+			}
+
+			// emission probabilities
+			for i := 0; i < h.N; i++ {
+				for j := 0; j < h.M; j++ {
+					
+					den, num := 0.0, 0.0
+					
+					for k := range observations {
+						
+						for l := range observations[k] {
+							if observations[k][l] == j {
+								num += gamma[k][l][i]
+							}
+						}
+						
+						for l := range observations[k] {
+							den += gamma[k][l][i]
+						}
+					}
+					
+					if num == 0.0 {
+						h.B[i][j][0], h.B[i][j][1] = 1e-10, 1e-10 
+					} else {
+						h.B[i][j][0], h.B[i][j][1] = num / den, num / den
+					}
+				}
+			}
+		}
+	}
+	// return the model avg log-likelihood
+	return new_likelihood
+}
+//
+
+
 // Decode hidden states
 func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 	
