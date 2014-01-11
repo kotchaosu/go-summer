@@ -7,17 +7,24 @@ Summarization module (sentence extractor) based on Hidden Markov Model
 ## Solutions for three classic problems of HMM:
 	* Evaluation -> Forward algorithm
 	* Decoding -> Viterbi algorithm
-	* Optimization -> Baum-Welch algorithm
+	* Learning -> counting (todo for unsupervised learning: Baum-Welch algorithm)
 
 ## Main resources:
 	* http://www.codeproject.com/Articles/69647/Hidden-Markov-Models-in-C
+	* https://github.com/garyburd/redigo
 	* http://disi.unitn.it/~passerini/teaching/complex_systems/slides/HMM.pdf
 
 ## What's new:
 	* Multiple features for emissions.
-	* Modified forward/backward/Viterbi for using "silent" states.
 	* Integration with Redis DB (saving and loading model parameters).
-	* Using concurrency for better performance (TODO).
+	* Using concurrency for better performance.
 
 ## Basic usage:
-	Still raw printing result to standard input.
+	
+	command: ./summer filepath -> summarize text file
+			 ./summer filepath full_set_path summ_set_path -> learn from data and summarize
+
+## Actually improved:
+	* updating model with unsupervised learning
+	* estimating emission distribution (functions instead of slices)
+	* preparing web app

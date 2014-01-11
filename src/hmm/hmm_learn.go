@@ -1,5 +1,5 @@
 // Hidden Markov Model toolkit
-package hmm2
+package hmm
 
 import (
 	"fmt"
@@ -11,17 +11,21 @@ import (
 )
 
 const (
-	DBA = "@@#"
-	DBB = "@#@"
-	DBPI = "@@@"
+	// keys' markers for Redis DB
+	DBA = "@@#"  // A
+	DBB = "@#@"  // B
+	DBPI = "@@@" // Pi
+	FS = "$"     // Feature separator
 )
 
 
 type HiddenMM struct {
 	// number of states
 	N int
-	// number of observations per state
-	M int
+	// number of symbols for feature 0
+	M0 int
+	// number of symbols for feature 1
+	M1 int
 	// transition probabilities N x N
 	A [][]float64
 	// emission probabilities N x M0 x M1
@@ -33,9 +37,7 @@ type HiddenMM struct {
 
 func InitHMM(N, M0, M1 int) HiddenMM {
 	fmt.Println("Creating model")
-
 	Pi := make([]float64, N, N)
-	Pi[0] = 1.0
 
 	A := make([][]float64, N, N)
 	for i := range A {
@@ -58,7 +60,6 @@ func InitHMM(N, M0, M1 int) HiddenMM {
 			}
 		}
 	}
-
 	return HiddenMM{N, M0, M1, A, B, Pi}
 }
 
@@ -70,14 +71,11 @@ func CheckConvergence(old_likelihood float64, new_likelihood float64, current_it
 		}
 
 		if max_iter > 0 {
-			if current_iter >= max_iter {
-				return true
-			}
+			if current_iter >= max_iter { return true }
 		}
+
 	} else {
-			if current_iter == max_iter {
-			return true
-		}
+		if current_iter == max_iter { return true }
 	}
 
 	if math.IsNaN(new_likelihood) || math.IsInf(new_likelihood, 0) {
@@ -101,7 +99,7 @@ func (h *HiddenMM) Forward(observation [][]int, c []float64) [][]float64 {
 	// STEP 1
 	// init
 	for i := 0; i < h.N; i++ {
-		if observation[0] != 0 {
+		if observation[0][0] * observation[0][1] != 0 {
 			fwd[0][i] = h.Pi[i] * h.B[i][observation[0][0]][observation[0][1]]
 		} else {
 			fwd[0][i] = h.Pi[i]
@@ -112,7 +110,7 @@ func (h *HiddenMM) Forward(observation [][]int, c []float64) [][]float64 {
 	// scaling
 	if c[0] != 0 {
 		for i := 0; i < h.N; i++ {
-			fwd[0][i] = fwd[0][i] / c[0]
+			fwd[0][i] /= c[0]
 		}
 	}
 
@@ -136,7 +134,7 @@ func (h *HiddenMM) Forward(observation [][]int, c []float64) [][]float64 {
 		// scaling
 		if c[t] != 0 {
 			for i := 0; i < h.N; i++ {
-				fwd[t][i] = fwd[t][i] / c[t]
+				fwd[t][i] /= c[t]
 			}
 		}
 	}
@@ -175,7 +173,7 @@ func (h *HiddenMM) Backward(observation [][]int, c []float64) [][]float64 {
 				}
 				sum += h.A[i][j] * p * bwd[t + 1][j]
 			}
-			bwd[t][i] = bwd[t][i] + sum / c[t]
+			bwd[t][i] += sum / c[t]
 		}
 	}
 	return bwd
@@ -183,10 +181,68 @@ func (h *HiddenMM) Backward(observation [][]int, c []float64) [][]float64 {
 
 
 // main algorithm for learning HMM parameters from given observations
-func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float64) float64 {
+// Supervised learning - we know states -> counting strategy
+func (h *HiddenMM) Learn(observations [][][]int) {
+	// for each sequence of observations
+	scale := make([]int, h.N, h.N)
+
+	for n := range observations {
+		// time - t == i (number of state)
+		for t := range observations[n] {
+			sposition := observations[n][t][0]
+			slength := observations[n][t][1]
+
+			scale[t]++
+
+			if sposition * slength != 0 {
+				h.Pi[t] += 1.0
+
+				for i := 0; i < slength; i++ {
+					h.B[t][sposition][i] += 1.0
+				}
+
+				for i := 0; i < sposition - 1; i++ {
+					h.B[t][i][slength] += 1.0
+				}
+			}
+
+			for j := t + 1; j < len(observations[n]); j++ {
+				nextposition := observations[n][j][0]
+				nextlength := observations[n][j][1]
+
+				if nextposition * nextlength != 0 {
+					h.A[t][j] += 1.0
+					break
+				}
+			}
+		}
+	}
+
+	for i := 0; i < h.N; i++ {
+		if scale[i] == 0 { continue }
+
+		h.Pi[i] /= float64(scale[i])
+
+		for j := 0; j < h.N; j++ {
+			h.A[i][j] /= float64(scale[i])
+		}
+
+		for j := 0; j < h.M0; j++ {
+			for k := 0; k < h.M1; k++ {
+				h.B[i][j][k] /= float64(scale[i])
+			}
+		}
+	}
+}
+
+
+// Unsupervised Learning - update created model
+func (h *HiddenMM) UpdateModel(observations [][][]int, iterations int, tolerance float64) float64 {
+	
 	if tolerance + float64(iterations) == 0.0 {
 		return 0.0
 	}
+
 	iter := 1
 	stop := false
 
@@ -234,6 +290,7 @@ func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float
 					gamma[i][j][k] = fwd[j][k] * bwd[j][k]
 					s += gamma[i][j][k]
 				}
+				
 				// scaling
 				if s != 0 {
 					for k := 0; k < h.N; k++ {
@@ -248,18 +305,11 @@ func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float
 
 				for k := 0; k < h.N; k++ {
 					for l := 0; l < h.N; l++ {
-
-						p := 0.0
-						// silent state
-						if observations[i][j + 1][0] * observations[i][j + 1][1] != 0 {
-							p = h.B[l][observations[i][j + 1][0]][observations[i][j + 1][1]]
-						} else {
-							p = 1.0
-						}
-						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * p
+						epsilon[i][j][k][l] = fwd[j][k] * h.A[k][l] * bwd[j + 1][l] * h.B[l][observations[i][j + 1][0]][observations[i][j + 1][1]]
 						s += epsilon[i][j][k][l]
 					}
 				}
+				
 				if s != 0 {
 					for k := 0; k < h.N; k++ {
 						for l := 0; l < h.N; l++ {
@@ -295,6 +345,7 @@ func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float
 				}
 				h.Pi[k] = sum / float64(len(observations))
 			}
+			
 			// transition probabilities
 			for i := 0; i < h.N; i++ {
 				for j := 0; j < h.N; j++ {
@@ -305,10 +356,12 @@ func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float
 						for l := 0; l < T - 1; l++ {
 							num += epsilon[k][l][i][j]
 						}
+						
 						for l := 0; l < T - 1; l++ {
 							den += gamma[k][l][i]
 						}
 					}
+					
 					if den == 0.0 {
 						h.A[i][j] = 0.0
 					} else {
@@ -320,23 +373,26 @@ func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float
 			// emission probabilities
 			for i := 0; i < h.N; i++ {
 				for j := 0; j < h.M; j++ {
-					if i % 2 != 0 {
-						den, num := 0.0, 0.0
-						for k := range observations {
-							for l := range observations[k] {
-								if observations[k][l] == j {
-									num += gamma[k][l][i]
-								}
-							}
-							for l := range observations[k] {
-								den += gamma[k][l][i]
+					
+					den, num := 0.0, 0.0
+					
+					for k := range observations {
+						
+						for l := range observations[k] {
+							if observations[k][l] == j {
+								num += gamma[k][l][i]
 							}
 						}
-						if num == 0.0 {
-							h.B[i][j] = 1e-10
-						} else {
-							h.B[i][j] = num / den
+						
+						for l := range observations[k] {
+							den += gamma[k][l][i]
 						}
+					}
+					
+					if num == 0.0 {
+						h.B[i][j][0], h.B[i][j][1] = 1e-10, 1e-10 
+					} else {
+						h.B[i][j][0], h.B[i][j][1] = num / den, num / den
 					}
 				}
 			}
@@ -345,6 +401,7 @@ func (h *HiddenMM) Learn(observations [][][]int, iterations int, tolerance float
 	// return the model avg log-likelihood
 	return new_likelihood
 }
+//
 
 
 // Decode hidden states
@@ -364,16 +421,10 @@ func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 	for i := range a {
 		a[i] = make([]float64, T)
 	}
-
+	
 	//Init
 	for i := 0; i < h.N; i++ {
-		p := 0.0
-
-		if observation[0][0] * observation[0][1] != 0 {
-			p = math.Log(h.B[i][observation[0][0]][observation[0][1]])
-		}
-
-		a[i][0] = (-1.0 * math.Log(h.Pi[i])) - p
+		a[i][0] = (-1.0 * math.Log(h.Pi[i])) - math.Log(h.B[i][observation[0][0]][observation[0][1]])
 	}
 
 	//Induction
@@ -389,12 +440,9 @@ func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 					min_state, min_weight = i, weight
 				}
 			}
-			a[j][t] = min_weight
-			
-			if observation[t][0] * observation[t][1] != 0 {
-				a[j][t] -= math.Log(h.B[j][observation[t][0]][observation[t][1]])
-			}
+			spositon, slength := observation[t][0], observation[t][1]
 
+			a[j][t] = min_weight - math.Log(h.B[j][spositon][slength])
 			s[j][t] = min_state
 		}
 	}
@@ -409,7 +457,6 @@ func (h *HiddenMM) Viterbi(observation [][]int, probability *float64) []int {
 			min_weight = a[i][T - 1]
 		}
 	}
-
 	//Traceback
 	path := make([]int, T)
 	path[T - 1] = min_state
@@ -448,34 +495,49 @@ func Int2Str(i int) string {
 }
 
 
+func ManageStoring(c, quit chan int, rows int) {
+
+	for i := 0; i < rows; i++ {
+		c <- i
+	}
+	close(c)
+
+	<-quit
+	return
+}
+
+
+func (h *HiddenMM) StoreRow(i int, connection redis.Conn) {
+
+	connection.Do("RPUSH", DBPI, h.Pi[i])	
+	connection.Send("MULTI")
+
+	for j := range h.A[i] {
+		connection.Send("RPUSH", DBA + Int2Str(i), h.A[i][j])
+	}
+
+	for j := range h.B[i] {
+		for k := range h.B[i][j] {
+			connection.Send("RPUSH", DBB + Int2Str(i) + FS + Int2Str(j), h.B[i][j][k])
+		}
+	}
+	connection.Do("EXEC")
+}
+
+
 func (h *HiddenMM) Store() {
 	pool := dbconn.Pool
 	connection := pool.Get()
 	
-	fmt.Println("Saving transition matrix A...")
-	connection.Send("MULTI")
-	for i := range h.A {
-		for j := range h.A[i] {
-			connection.Send("RPUSH", DBA + Int2Str(i), h.A[i][j])
-		}
-	}
-	connection.Do("EXEC")
+	c, quit := make(chan int), make(chan int)
 
-	fmt.Println("Saving emission matrix B...")
-	connection.Send("MULTI")
-	for i := range h.B {
-		for j := range h.B[i] {
-			for k := range h.B[i][j] {
-				connection.Send("RPUSH", DBB + Int2Str(i), h.B[i][j][k])
-			}
+	go func() {
+		for i := range c {			
+			h.StoreRow(i, connection)
 		}
-	}
-	connection.Do("EXEC")
-
-	fmt.Println("Saving probability distribution Pi...")
-	for i := range h.Pi {
-		connection.Do("RPUSH", DBPI, h.Pi[i])
-	}
+		quit <- 0
+	}()
+	ManageStoring(c, quit, h.N)
 
 	connection.Close()
 }
@@ -504,17 +566,20 @@ func Load(N, M0, M1 int) HiddenMM {
 	B := make([][][]float64, N, N)
 
 	for i := range B {
-		loadedB, err := redis.Values(connection.Do("LRANGE", DBB + Int2Str(i), 0, -1))
-
-		if err != nil {
-			fmt.Println("Error while reading B[", i, "]")
-			os.Exit(1)
-		}
 		B[i] = make([][]float64, M0, M0)
-
+		
 		for j := range B[i] {
+			loadedB, err := redis.Values(connection.Do("LRANGE", DBB + Int2Str(i) + FS + Int2Str(j), 0, -1))
+
+			if err != nil {
+				fmt.Println("Error while reading B[", i, "][", j,"]")
+				os.Exit(1)
+			}
+
 			B[i][j] = make([]float64, M1, M1)
-				B[i][j][k], _ = redis.Float64(loadedB[j], err)
+			for k := range B[i][j] {
+				B[i][j][k], _ = redis.Float64(loadedB[j], err)	
+			}
 		}
 	}
 
